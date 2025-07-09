@@ -1,24 +1,28 @@
-from math import radians, cos, sin, asin, sqrt
+import numpy as np
 
-def haversine(lon1: float, lat1: float, lon2: float, lat2: float) -> float:
-    """
-    Calculate the great circle distance between two points on the 
-    earth (specified in decimal degrees), returns the distance in
-    kilometers.
-    All arguments must be of equal length.
-    :param lon1: longitude of first place
-    :param lat1: latitude of first place
-    :param lon2: longitude of second place
-    :param lat2: latitude of second place
-    :return: distance in kilometers between the two sets of coordinates
-    """
-    # Convert decimal degrees to radians
-    lon1, lat1, lon2, lat2 = map(radians, [lon1, lat1, lon2, lat2])
+def Cohens_D(group1, group2):
+    n_features = len(group1)
 
-    # Haversine formula
-    dlon = lon2 - lon1
-    dlat = lat2 - lat1
-    a = sin(dlat/2)**2 + cos(lat1) * cos(lat2) * sin(dlon/2)**2
-    c = 2 * asin(sqrt(a))
-    r = 6371 # Radius of earth in kilometers
-    return c * r
+    d = [0] * n_features  # Initialize a list to store Cohen's d value
+    for f in range(n_features):
+        
+        # Calculate the means and standard deviations for each group
+        mean1 = group1[f].mean()
+        mean2 = group2[f].mean()
+        std1 = group1[f].std()
+        std2 = group2[f].std()
+
+        # Calculate Cohen's d
+        pooled_std = ((std1 ** 2 + std2 ** 2) / 2) ** 0.5
+        d[f] = (mean1 - mean2) / pooled_std     
+
+        # Check if the standard deviation is zero to avoid division by zero
+        if pooled_std == 0:
+            d[f] = 0 
+    return d
+
+group1 = np.array([1,2,3,4,5])
+group2 = np.array([2,3,4,5,6])
+
+a = Cohens_D(group1, group2)
+print(a)

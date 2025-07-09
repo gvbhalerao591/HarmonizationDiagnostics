@@ -1,7 +1,9 @@
 from DiagnoseHarmonization import DiagnosticFunctions
 
-def test_haversine():
-    # Amsterdam to Berlin
-    assert DiagnosticFunctions.haversine(
-        4.895168, 52.370216, 13.404954, 52.520008
-    ) == 576.6625818456291
+group1 = np.array([1,2,3,4,5])
+group2 = np.array([2,3,4,5,6])
+
+
+
+def test_cohens_d():
+    assert DiagnosticFunctions.Cohens_D(group1, group2) == [0, 0, 0, 0, 0]
