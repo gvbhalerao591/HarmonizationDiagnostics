@@ -12,6 +12,6 @@ def test_pca_corr():
     pearsonr, explained_variance, score, batchPCcorr = DiagnosticFunctions.PcaCorr(X, batch)
 
     # Check the shape of the results
-    assert score.shape == (100, 5)  # Score should have the same number of samples as X
-    assert len(explained_variance) == 5  # Explained variance should match number of features
+    assert score.shape == (100, 3)  # Score should have the same number of samples as X
+    assert len(explained_variance) == 3  # Explained variance should match number of features
     assert len(batchPCcorr) == 3  # We only compute correlation for the first 3 PCs

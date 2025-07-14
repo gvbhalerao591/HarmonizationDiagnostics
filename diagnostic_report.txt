@@ -1,0 +1,14 @@
+2025-07-14 10:45:09,396 - INFO - Logging started. Output file: diagnostic_report.txt
+2025-07-14 10:45:09,397 - INFO - Converting categorical batch to numeric codes
+2025-07-14 10:45:09,399 - INFO - Batch categories: [np.str_('A'), np.str_('B')]
+2025-07-14 10:45:09,399 - INFO - Batch converted to numeric codes.
+2025-07-14 10:45:09,399 - INFO - Input validation passed.
+2025-07-14 10:45:09,402 - INFO - DataFrame constructed with features and group labels.
+2025-07-14 10:45:09,402 - INFO - Starting diagnostic report generation.
+2025-07-14 10:45:09,402 - INFO - Analysis started: 2025-07-14 10:45:09.402170
+Number of subjects: 5
+Number of features: 3
+Unique batch: {np.int64(0), np.int64(1)}
+Log location: diagnostic_report.txt
+
+2025-07-14 10:45:09,402 - INFO - Loading diagnostic functions from DiagnoseHarmonization module----------------------------------------------------------------------------
