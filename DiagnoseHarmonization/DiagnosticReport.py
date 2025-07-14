@@ -123,6 +123,21 @@ def FullReport(data: np.ndarray, batch, log_path: str = None):
     print(pearsonr)
     logging.info("PCA results added to DataFrame.")
 
+    logging.info("Performing Mahalanobis distance calculation.")
+    # Calculate Mahalanobis distance
+    mahalanobis_distance = DiagnosticFunctions.MahalanobisDistance(data, batch)
+    logging.info("Mahalanobis distance calculation completed.")
+
+    logging.info(f"Mahalanobis distances between batches across features is: {mahalanobis_distance}")
+
+    # Add Mahalanobis distance results to DataFrame
+    for (b1, b2), distance in mahalanobis_distance.items():
+        df[f"Mahalanobis_Distance_{b1}_vs_{b2}"] = distance
+        
+    logging.info("Mahalanobis distance results added to DataFrame.")
+
+    logging.info("Diagnostic report generation completed.")
+
     return df
 
 # Example data

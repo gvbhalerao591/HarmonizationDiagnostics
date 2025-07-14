@@ -33,6 +33,66 @@ def PcaCorr(Data, batch, N_components=3):
     return pearsonr, explained_variance, score, batchPCcorr
 
 
+def MahalanobisDistance(Data=None, batch=None, Cov=None,covariates=None):
+    """Calculate Mahalanobis distance between pairs of batches in the data
+    Args:
+        Data (np.ndarray): Data matrix where rows are samples and columns are features.
+        
+        batch (np.ndarray): Batch labels for each sample.
+
+        Cov (np.ndarray, optional): Covariance matrix. If None, it will be computed from Data.
+    """
+
+    unique_batches = np.unique(batch)
+    if len(unique_batches) < 2:
+        raise ValueError("At least two unique batches are required to compute Mahalanobis distance.")
+    
+    batch_means = {}
+    batch_data = {}
+
+    if covariates is not None:
+        from numpy.linalg import inv, pinv
+        # If covariates are provided, adjust the data accordingly
+        """Regress each feature in data on the covariates and return residuals."""
+        # Add intercept
+        X = np.column_stack([np.ones(covariates.shape[0]), covariates])  # (N, C+1)
+        beta = pinv(X) @ Data  # (C+1, X)
+        predicted = X @ beta   # (N, X)
+        Data = Data - predicted
+
+        return Data
+
+
+    # Calculate means for each feature in each batch
+    for b in unique_batches:
+        batch_data[b] = Data[batch == b]
+        batch_means[b] = np.mean(batch_data[b], axis=0)
+
+    if Cov is None:
+        # Compute pooled covariance matrix from the entire dataset
+        Cov = np.cov(Data, rowvar=False)
+
+    mahalanobis_distance = {}
+
+    # Calculate Mahalanobis distance for each pair of batches
+    for i,b1 in enumerate(unique_batches):
+        for b2 in unique_batches[i+1:]:
+            diff = batch_means[b1] - batch_means[b2]
+            inv_Cov = np.linalg.inv(Cov)
+            distance = np.sqrt(np.dot(np.dot(diff, inv_Cov), diff.T))
+            mahalanobis_distance[(b1, b2)] = distance
+    return mahalanobis_distance
+
+
+
+
+
+
+
+
+
+
+
 
 # ------------------ CLI Help Only Setup ------------------
 
@@ -85,6 +145,30 @@ def setup_help_only_parser():
         - Explained variance for each PC.
         - PCA scores for each sample.
         - Correlation of the first N_components PCs with the batch variable.'''
+    )
+    parser_mahalanobis = subparsers.add_parser(
+        'mahalanobis_distance',
+        help='Calculate Mahalanobis distance between batches',
+        description="""
+        Calculates Mahalanobis distance between pairs of batches in the data.
+        If covariates are provided, it will regress each feature on the covariates and return residuals from which the Mahalanobis distance is calculated.
+        Args:
+            Data (np.ndarray): Data matrix where rows are samples and columns are features.
+            batch (np.ndarray): Batch labels for each sample.
+            Cov (np.ndarray, optional): Covariance matrix. If None, it will be computed from Data.
+            covariates (np.ndarray, optional): Covariates to regress out from the data.
+        Returns:
+            dict: A dictionary with Mahalanobis distances for each pair of batches.
+        Raises:
+            ValueError: If less than two unique batches are provided.
+        Example:
+            mahalanobis_distance(Data=data, batch=batch_labels, Cov=cov_matrix, covariates=covariates)
+        """,
+        epilog = '''
+        Example usage:
+        DiagnosticFunctions.mahalanobis_distance --Data <data.npy> --batch <batch.npy>
+        Returns a dictionary with Mahalanobis distances for each pair of batches.
+        '''
     )
 
     return parser
