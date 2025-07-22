@@ -67,7 +67,7 @@ def test_PC_plot():
    
     PlotDiagnosticResults.Plot_PC_corr(score, batch)
 
-#%%
+
 # Test the PCA plot function with batch and covariates
 def test_PC_plot_with_covariates():
     # Create a sample dataset

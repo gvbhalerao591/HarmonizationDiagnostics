@@ -5,27 +5,60 @@ from scipy.stats import pearsonr
 
 # ------------------ Diagnostic Functions ------------------
 # Cohens D function calculates the effect size between two groups for each feature.
-def Cohens_D(Data1, Data2):
-    """Calculate Cohen's d for each feature between two groups.
-    
-    Parameters:
-        Data1 (np.ndarray): First group data (features x samples).
-        Data2 (np.ndarray): Second group data (features x samples).     
-    Returns:
-        list: Cohen's d values for each feature.
-    Raises:
-        ValueError: If Data1 and Data2 do not have the same number of features.
+
+import numpy as np
+from itertools import combinations
+
+def Cohens_D(Data, group_indices, BatchNames=None):
     """
-    n_features = len(Data1)
-    d = [0] * n_features
-    for f in range(n_features):
-        mean1 = Data1[f].mean()
-        mean2 = Data2[f].mean()
-        std1 = Data1[f].std()
-        std2 = Data2[f].std()
-        pooled_std = ((std1 ** 2 + std2 ** 2) / 2) ** 0.5
-        d[f] = (mean1 - mean2) / pooled_std if pooled_std != 0 else 0
-    return d
+    Calculate Cohen's d for each feature between all pairs of groups.
+
+    Parameters:
+        Data (np.ndarray): Data matrix (samples x features).
+        group_indices (list or np.ndarray): Group label for each sample.
+        BatchNames (dict, optional): Optional mapping from group value to readable name.
+
+    Returns:
+        np.ndarray: Cohen's d values, shape = (num_pairs, num_features).
+        list: Pair labels, each as a tuple of group names.
+    """
+    if not isinstance(Data, np.ndarray) or Data.ndim != 2:
+        raise ValueError("Data must be a 2D numpy array (samples x features).")
+    if not isinstance(group_indices, (list, np.ndarray)) or np.ndim(group_indices) != 1:
+        raise ValueError("group_indices must be a 1D list or numpy array.")
+    if Data.shape[0] != len(group_indices):
+        raise ValueError("Number of samples in Data must match length of group_indices.")
+
+    group_indices = np.array(group_indices)
+    unique_groups = np.unique(group_indices)
+
+    if len(unique_groups) < 2:
+        raise ValueError("At least two unique groups are required to calculate Cohen's d.")
+
+    if BatchNames is None:
+        BatchNames = {g: str(g) for g in unique_groups}
+
+    pairwise_d = []
+    pair_labels = []
+
+    for g1, g2 in combinations(unique_groups, 2):
+        data1 = Data[group_indices == g1,:]
+        data2 = Data[group_indices == g2,:]
+
+        mean1 = np.mean(data1, axis=0)
+        mean2 = np.mean(data2, axis=0)
+        std1 = np.std(data1, axis=0, ddof=1)
+        std2 = np.std(data2, axis=0, ddof=1)
+
+        pooled_std = np.sqrt((std1 ** 2 + std2 ** 2) / 2)
+        with np.errstate(divide='ignore', invalid='ignore'):
+            d = (mean1 - mean2) / pooled_std
+            d[np.isnan(d)] = 0  # Replace NaNs due to division by zero
+
+        pairwise_d.append(d)
+        pair_labels.append((f'{BatchNames[g1]} - {BatchNames[g2]}'))
+
+    return np.array(pairwise_d), pair_labels
 
 # PcaCorr performs PCA on data and computes Pearson correlation of the top N principal components with a batch variable.
 import numpy as np
@@ -118,7 +151,6 @@ def MahalanobisDistance(Data=None, batch=None, Cov=None,covariates=None):
 
         return Data
 
-
     # Calculate means for each feature in each batch
     for b in unique_batches:
         batch_data[b] = Data[batch == b]
@@ -138,6 +170,9 @@ def MahalanobisDistance(Data=None, batch=None, Cov=None,covariates=None):
             distance = np.sqrt(np.dot(np.dot(diff, inv_Cov), diff.T))
             mahalanobis_distance[(b1, b2)] = distance
     return mahalanobis_distance
+
+
+
 
 # ------------------ CLI Help Only Setup ------------------
 

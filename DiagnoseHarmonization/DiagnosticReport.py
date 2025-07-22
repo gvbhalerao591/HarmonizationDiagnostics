@@ -12,7 +12,7 @@ import pandas as pd
 import os
 from datetime import datetime
 
-def FullReport(data: np.ndarray, batch, log_path: str = None):
+def FullReport(data: np.ndarray, batch, covariates, log_path: str = None):
     import numpy as np
     import pandas as pd
     import os
@@ -96,8 +96,22 @@ def FullReport(data: np.ndarray, batch, log_path: str = None):
     logging.info("Successfully loaded diagnostic functions from DiagnoseHarmonization module"\
     "---------------------------------------------------------------------------------------------------------")
 
-    logging.info("Performing Cohen's d calculation.")
-    cohens_d = DiagnosticFunctions.Cohens_D(data, data)  # Using data
+    # Check number of batches
+    unique_batches = np.unique(batch)
+    # Use Batch indexes for Cohens d and Mahalanobis distance
+    batch_indexes = {b: i for i, b in enumerate(unique_batches)}
+    logging.info(f"Unique batches found: {unique_batches}")
+    logging.info(f"Batch indexes: {batch_indexes}")
+
+    # Perform Cohen's calculation as a measure of effect size between each pair of batches
+    if len(unique_batches) < 2:
+        logging.warning("Less than two unique batches found. Skipping Cohen's d calculation.")
+        cohens_d = None
+    else:
+        # Calculate Cohen's d for each pair of batches
+        logging.info("Calculating Cohen's d for each pair of batches.")
+        DiagnosticFunctions.Cohens_D(data, batch)
+        logging.info("Cohen's d calculation completed.")
 
     logging.info("Cohen's d calculation completed.")
 

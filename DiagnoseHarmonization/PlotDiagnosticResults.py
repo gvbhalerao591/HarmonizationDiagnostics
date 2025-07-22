@@ -6,72 +6,77 @@ import numpy as np
 """----------------------------------------------------------------------------------------------------------------------------"""
 """---------------------------------------- Plotting functions for Cohens D results ----------------------------------"""
 """----------------------------------------------------------------------------------------------------------------------------"""
-def CohensD(cohens_d, df: None) -> list:
+def Cohens_D(cohens_d: np.ndarray, pair_labels: list, df: None = None) -> None:
     """
-    Plots the output of Cohens D as a bar plot with a histogram of the values on different axes at the same scale.
+    Plots the output of pairwise Cohen's D as bar plots with histograms of the values on different axes.
 
     Args:
-        result (pd.DataFrame): DataFrame containing the results of Cohens D.
-        doall_df (pd.DataFrame, optional): DataFrame containing additional data for plotting. Defaults to None.
+        cohens_d (np.ndarray): 2D array of Cohen's D values (num_pairs x num_features).
+        pair_labels (list): List of labels for each group pair (e.g., ['Group1 + Group2']).
+        df (pd.DataFrame, optional): DataFrame for future use or extension. Currently unused.
 
     Returns:
-        None: Displays the plot.
+        None: Displays the plots.
     """
     import matplotlib.pyplot as plt
-    from collections.abc import Sequence
+    import matplotlib.gridspec as gridspec
+    import numpy as np
+    import pandas as pd
 
+    # Input validation
     if df is not None:
         if not isinstance(df, pd.DataFrame):
             raise ValueError("Dataframe must be a pandas DataFrame")
         if 'CohensD' not in df.columns:
             raise ValueError("Dataframe must contain a 'CohensD' column")
-        
+
+    if not isinstance(cohens_d, np.ndarray):
+        raise ValueError("cohens_d must be a NumPy array.")
     
-    import matplotlib.pyplot as plt
-    import matplotlib.gridspec as gridspec
-    import numpy as np
+    if cohens_d.ndim != 2:
+        raise ValueError("cohens_d must be a 2D array (num_pairs x num_features).")
 
-    # Dummy data (replace with your actual data)
-    np.random.seed(0)
-    cohens_d = np.random.normal(0, 0.5, 100)
+    if not isinstance(pair_labels, list) or len(pair_labels) != cohens_d.shape[0]:
+        raise ValueError("pair_labels must be a list with the same length as the number of rows in cohens_d.")
 
-    # Set up figure and gridspec
-    fig = plt.figure(figsize=(14, 8))
-    gs = gridspec.GridSpec(1, 2, width_ratios=[1, 8], wspace=0.3)
+    for i in range(cohens_d.shape[0]):
+        fig = plt.figure(figsize=(14, 8))
+        gs = gridspec.GridSpec(1, 2, width_ratios=[1, 8], wspace=0.3)
 
-    # Histogram on the left
-    ax1 = fig.add_subplot(gs[0])
-    ax1.hist(cohens_d, bins=20, orientation='horizontal', color=[0.8, 0.2, 0.2])
-    ax1.set_xlabel("Proportion")
-    ax1.invert_xaxis()
-    ax1.yaxis.tick_right()
-    ax1.yaxis.set_label_position("right")
+        # Histogram (left)
+        ax1 = fig.add_subplot(gs[0])
+        ax1.hist(cohens_d[i], bins=20, orientation='horizontal', color=[0.8, 0.2, 0.2])
+        ax1.set_xlabel("Frequency")
+        ax1.invert_xaxis()
+        ax1.yaxis.tick_right()
+        ax1.yaxis.set_label_position("right")
 
-    # Bar plot on the right
-    ax2 = fig.add_subplot(gs[1], sharey=ax1)
-    indices = np.arange(len(cohens_d))
-    bars = ax2.bar(indices, cohens_d, color=[0.2, 0.4, 0.6])
-    ax2.plot(indices, cohens_d, 'r.')
+        # Bar plot (right)
+        ax2 = fig.add_subplot(gs[1], sharey=ax1)
+        indices = np.arange(cohens_d.shape[1])
+        bars = ax2.bar(indices, cohens_d[i], color=[0.2, 0.4, 0.6])
+        ax2.plot(indices, cohens_d[i], 'r.')
 
-    # Significance lines
-    effect_sizes = [
-        (0.2, 'Small effect size', 'g'),
-        (0.5, 'Medium effect size', 'b'),
-        (0.8, 'Large effect size', 'r'),
-        (2.0, 'Huge effect size', 'm')
-    ]
+        # Significance lines
+        effect_sizes = [
+            (0.2, 'Small', 'g'),
+            (0.5, 'Medium', 'b'),
+            (0.8, 'Large', 'r'),
+            (2.0, 'Huge', 'm')
+        ]
 
-    for val, label, color in effect_sizes:
-        ax2.axhline(y=val, linestyle='--', color=color, label=label)
-        ax2.axhline(y=-val, linestyle='--', color=color)
+        for val, label, color in effect_sizes:
+            ax2.axhline(y=val, linestyle='--', color=color, label=label)
+            ax2.axhline(y=-val, linestyle='--', color=color)
 
-    # Labels and grid
-    ax2.set_xlabel("IDP index")
-    ax2.set_ylabel("Cohen's d: $(\\mu_1 - \\mu_2)/\\sigma_{pooled}$")
-    ax2.set_title("Effect Size (Cohen's d) for T2 Batch Effect Across Structural IDPs")
-    ax2.grid(True)
-    #plt.tight_layout()
-    plt.show()
+        # Labels and title
+        ax2.set_xlabel("Feature Index")
+        ax2.set_ylabel("Cohen's d: $(\\mu_1 - \\mu_2)/\\sigma_{pooled}$")
+        ax2.set_title(f"Effect Size (Cohen's d) for {pair_labels[i]}")
+        ax2.grid(True)
+
+        plt.tight_layout()
+        plt.show()
 """----------------------------------------------------------------------------------------------------------------------------"""
 """---------------------------------------- Plotting functions for PCA correlation results ----------------------------------"""
 """----------------------------------------------------------------------------------------------------------------------------"""
@@ -188,4 +193,40 @@ def Plot_PC_corr(PrincipleComponents, batch, covariates=None, variable_names=Non
                      xticklabels=combined_variable_names, yticklabels=combined_variable_names)
         plt.title('Correlation Matrix of PCs, Batch and Covariates')
         plt.show()    
+# %%
+# Final sanity check to ensure the plotting shows the expected results
+
+def test_batch_PC_grouping():
+    """
+    Test the PCA plot function when there is a known batch effect on the data and a known covariate effect.
+    This function generates a synthetic dataset with a known batch effect and covariate effect, applies PCA, and plots the results.
+
+    We construct our data using a general linear model:
+    Y = X @ B + E
+
+    where:
+        - Y is the response variable (data matrix)
+        - X is the design matrix (including batch and covariates)
+        - B is the coefficient matrix
+        - E is the error term (noise)
+    """
+# Create a sample dataset
+    np.random.seed(0)
+    X = np.random.rand(100, 5)  # 100 samples, 5 features
+    batch = np.random.randint(0, 2, size=100)  # Binary batch variable
+    covariate_1 = np.random.randint(0,4, size=100)  # One categorical covariate with 4 categories
+    covariate_2 = np.random.rand(100)  # One continuous covariate
+    covariates =  np.column_stack((covariate_1, covariate_2))  # Combine into a 2D array    
+    # Check if the function works with variable names
+    variable_names = ['batch', 'Disease category', 'Age']
+
+    # Add the batch, disease category and age simulated effected to the data
+    B = np.array([1, 0.5, 0.2, 0.1, 0.05],  # Batch effect
+                  [0.5, 1, 0.3, 0.2, 0.1],  # Disease category effect
+                  [0.2, 0.3, 1, 0.4, 0.3, 0.2])  # Age effect
+    Data = X @ B + np.random.normal(0, 0.1, X.shape)  # Add noise
+    # Apply PCA to the data
+    from DiagnoseHarmonization import DiagnosticFunctions
+    explained_variance_with_names, score_with_names, batchPCcorr_with_names = DiagnosticFunctions.PcaCorr(X, batch, covariates=covariates, variable_names=variable_names)
+
 # %%
