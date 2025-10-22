@@ -15,6 +15,16 @@ def DiagnosticReport(data, batch,
     The different tests used are all defined in DiagnosticFunctions.py and the plots in PlotDiagnosticResults.py.
     The following tests are included:
 
+    Args:
+        Data:
+        Batch:
+        Covariate: array of values, each column is one covariate
+        Batch_names: N/A needs fixing
+        Covariate_names (List): Names of the covariates in the same order as covariate matrix columns
+        Save_dir (String): File path to the directory in which to save report and images
+        SaveArtifacts (Logical): Save plots as PNG images in Save_dir or current directory
+
+
     Additive components:
         - Cohen' D test for mean differences (standardized mean difference)
         - Mahalanobis distance test for multivariate mean differences
@@ -73,14 +83,19 @@ def DiagnosticReport(data, batch,
         else:
             logger.info(f"Saving to directory: {save_dir}")
         report_path = set_report_path(report, save_dir, report_name="DiagnosticReport.html")
-        logger.info(f"Report will be saved to: {report_path}")
+        line_break_in_text = "-----------------------------------------------------------------------------------------------------------------------------"
+
+        report.text_simple('Summary of dataset:')  
+        report.text_simple(line_break_in_text)   
         report.log_text(
             f"Analysis started\n"
             f"Number of subjects: {data.shape[0]}\n"
             f"Number of features: {data.shape[1]}\n"
-            f"Unique batch: {set(batch)}\n"
+            f"Unique batches: {set(batch)}\n"
             f"HTML report: {report.report_path}\n"
+            f"Unique Covariates: {set(covariate_names)}\n"
             )
+        report.text_simple(line_break_in_text)  
         
         # Check that the data is in the correct format and print the output in the log
         # Some functions can only take Batch as a numeric array, convert now to make a seperate array batch_numeric for these functions and 
@@ -108,14 +123,12 @@ def DiagnosticReport(data, batch,
             batch_names = [f"Batch {i+1}" for i in range(len(set(batch)))]
         logger.info(f"Using batch names: {batch_names}")
 
-
-        
         # Begin the report 
         logger.info("Beginning diagnostic tests")
 
 
         # Additive tests first
-        logger.info(" The order of tests is as follows: Additive tests, Multiplicative tests, Both")
+        report.text_simple(" The order of tests is as follows: Additive tests, Multiplicative tests, Tests of distribution")
         logger.info("Additive tests:")
         # Cohen's D test for mean differences
         logger.info("Cohen's D test for mean differences")
@@ -123,25 +136,26 @@ def DiagnosticReport(data, batch,
         report.log_text("Cohen's D test for mean differences completed")
         PlotDiagnosticResults.Cohens_D_plot(cohens_d_results,pair_labels=pairlabels,rep=report)
         # Add a summary to the results of the Cohen's D test in the log
-        logger.info("Cohen's D results summary:")
         # Create summary of number of features with small, medium, large effect sizes
         small_effect = (np.abs(cohens_d_results) < 0.2).sum()
         # Bug fix to make sure that if small effect is zero that it does not save as an array
-
-
         medium_effect = ((np.abs(cohens_d_results) >= 0.2) & (np.abs(cohens_d_results) < 0.5)).sum()
         # Bug fix to make sure that if medium effect is zero that it does not save as an array
-
 
         large_effect = (np.abs(cohens_d_results) >= 0.6).sum()
         # Bug fix to make sure that if large effect is zero that it does not save as an array
 
+        # Add a log summary for key results WIP not recognising function?
 
-        logger.info(f"Number of features with small effect size (|d| < 0.2): {small_effect}")
-        logger.info(f"Number of features with medium effect size (0.2 <= |d| < 0.5): {medium_effect}")
-        logger.info(f"Number of features with large effect size (|d| >= 0.5): {large_effect}")
-        report.log_text("Cohen's D plot added to report")
+        report.text_simple(line_break_in_text)   
 
+        report.log_text(
+                f"Cohen's D results summary\n"
+                f"Number of features with small effect size (|d| < 0.2): {small_effect}\n"
+                f"Number of features with medium effect size (0.2 <= |d| < 0.5): {medium_effect}\n"
+                f"Number of features with large effect size (|d| >= 0.5): {large_effect}\n"
+        )
+        report.text_simple(line_break_in_text)   
         # Mahalanobis distance test for multivariate mean differences
         logger.info("Doing Mahalanobis distance test for multivariate mean differences")
         mahalanobis_results = DiagnosticFunctions.MahalanobisDistance(data, batch,covariates=covariates)
@@ -149,17 +163,20 @@ def DiagnosticReport(data, batch,
         PlotDiagnosticResults.mahalanobis_distance_plot(mahalanobis_results,rep=report)
         report.log_text("Mahalanobis distance plot added to report")
         # Summary of the Mahalanobis heatmap in the log
+        report.text_simple(line_break_in_text)   
         logger.info("Mahalanobis distance results summary:")
-        # Create summary of pairwise distances
+        # Create summary of pairwise distances    
         pairwise_distances = mahalanobis_results['pairwise_raw']
+        logger.info("Pairwise test results")
         for (b1, b2), dist in pairwise_distances.items():
-            logger.info(f"Mahalanobis distance between batch {b1} and batch {b2}: {dist:.4f}")
+            report.text_simple(f"Mahalanobis distance between batch {b1} and batch {b2}: {dist:.4f}")
         # Return summary of centroid distances
+        logger.info("Unique batch to global centroied distance test results") 
         centroid_distances = mahalanobis_results['centroid_raw']
         for b, dist in centroid_distances.items():
-            logger.info(f"Mahalanobis distance of batch {b} to overall centroid: {dist:.4f}")
+            report.text_simple(f"Mahalanobis distance of batch {b} to overall centroid: {dist:.4f}")
         # End of additive tests 
-
+        report.text_simple(line_break_in_text)   
 
         # Multiplicative tests 
         logger.info("Multiplicative tests:")
@@ -206,6 +223,7 @@ def DiagnosticReport(data, batch,
         ks_results = DiagnosticFunctions.KS_test(data, batch, feature_names=None)
         report.log_text("Two-sample Kolmogorov-Smirnov test for distribution differences between each unique batch pair completed")
         PlotDiagnosticResults.KS_plot(ks_results,rep=report)
+        plt.close
         report.log_text("Two-sample Kolmogorov-Smirnov test plot added to report")
         # Finalize the report
         logger.info("Diagnostic tests completed")

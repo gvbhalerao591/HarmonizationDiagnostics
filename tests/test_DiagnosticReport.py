@@ -23,7 +23,7 @@ def test_full_pipeline_generates_report(tmp_path = save_dir):
     # -------------------------
     # Prepare synthetic data
     # -------------------------
-    np.random.seed(0)
+    np.random.seed(27)
     n_samples = 80
     n_features = 100
 
@@ -34,7 +34,7 @@ def test_full_pipeline_generates_report(tmp_path = save_dir):
     np.random.shuffle(batch)
     covariate_cont = np.random.rand(n_samples)                # continuous
     covariates = np.column_stack((covariate_cat, covariate_cont))
-    variable_names = ['batch', 'Group', 'Age']  # supports 'batch' as first name per bath
+    variable_names = ['Sex', 'Age']  # supports 'batch' as first name per bath
 
     # -------------------------
     # Where to save the report
@@ -60,7 +60,7 @@ def test_full_pipeline_generates_report(tmp_path = save_dir):
             covariates=covariates,
             covariate_names=variable_names,
             save_dir=str(out_dir),
-            SaveArtifacts=True,
+            SaveArtifacts=False,
             rep=None,
             show=False
         )

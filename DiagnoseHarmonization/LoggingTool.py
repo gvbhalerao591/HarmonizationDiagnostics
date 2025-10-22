@@ -74,9 +74,7 @@ class StatsReporter:
             self._file_handler.setFormatter(self._fmt)
             self.logger.addHandler(self._file_handler)
             self._artifacts_paths.append(logfile)
-
-    # ---- public API --------------------------------------------------------
-
+            
     def log_summary(self, test_name: str, summary: dict):
         """
         Write a one-line header + pretty key/val summary via logger.
@@ -90,6 +88,14 @@ class StatsReporter:
         """Free-form text to the log."""
         self.logger.log(level, message)
 
+    def text_simple(self, message: str, level=logging.INFO):
+        """Log without date and time to reduce clutter """
+        fmt_backup = self._mem_handler.formatter
+        self._mem_handler.setFormatter(logging.Formatter("%(message)s"))
+        self.logger.log(level, message)
+        self._mem_handler.setFormatter(fmt_backup)
+
+
     def log_plot(self, fig, caption: str = "Plot"):
         """
         Accepts a matplotlib Figure, embeds it into the HTML report,
@@ -97,13 +103,13 @@ class StatsReporter:
         """
         # Save to a bytes buffer (PNG) and base64-encode for inline HTML
         buf = io.BytesIO()
-        fig.tight_layout()  # nicer default
+        fig.tight_layout() # Check as throws warning with some figures...
         fig.savefig(buf, format="png", dpi=150, bbox_inches="tight")
         buf.seek(0)
         b64 = base64.b64encode(buf.read()).decode("ascii")
         self._plots.append((caption, b64))
 
-        # Also write a standalone .png if requested
+        # Save PNG of figure to same directory if save_artifacts==true
         if self.save_artifacts and self.save_dir is not None:
             fname = self._unique_png_name(caption)
             outpath = self.save_dir / fname
@@ -145,6 +151,7 @@ class StatsReporter:
         self.logger.info(f"save_artifacts={self.save_artifacts} | save_dir={self.save_dir}")
         return self
 
+    # Exit messages defined seperately from function, keep to logging tool (maybe rethink later?)
     def __exit__(self, exc_type, exc, tb):
         if exc:
             self.logger.exception("Exception during reporting", exc_info=(exc_type, exc, tb))
@@ -173,6 +180,7 @@ class StatsReporter:
         ts = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
         return f"{ts}_{safe}.png"
 
+    # From GPT - 5\/ HTML set up 
     @staticmethod
     def _render_html(title: str, log_text: str, plots: List[Tuple[str, str]]) -> str:
         # Very small self-contained HTML
