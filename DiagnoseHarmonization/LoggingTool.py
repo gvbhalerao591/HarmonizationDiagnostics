@@ -103,7 +103,7 @@ class StatsReporter:
         """
         # Save to a bytes buffer (PNG) and base64-encode for inline HTML
         buf = io.BytesIO()
-        fig.tight_layout() # Check as throws warning with some figures...
+        #fig.tight_layout() # Check as throws warning with some figures...
         fig.savefig(buf, format="png", dpi=150, bbox_inches="tight")
         buf.seek(0)
         b64 = base64.b64encode(buf.read()).decode("ascii")

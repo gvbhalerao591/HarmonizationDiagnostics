@@ -28,7 +28,7 @@ def test_full_pipeline_generates_report(tmp_path = save_dir):
     n_features = 100
 
     data = np.random.randn(n_samples, n_features)
-    covariate_cat = np.random.randint(0, 1, size=n_samples)    # categorical
+    covariate_cat = np.random.randint(0, 2, size=n_samples)    # categorical
     print( covariate_cat)
     # Mean center the categorical covariate, testing this as divide by zero errors in PCA correlations otherwise
     covariate_cat = covariate_cat - np.mean(covariate_cat) # Try mean centering as correlations with PCA not working 27/10/2025
@@ -77,6 +77,7 @@ def test_full_pipeline_generates_report(tmp_path = save_dir):
                     covariates=covariates,
                         covariate_names=variable_names,
                             save_dir=str(out_dir),
+                            save_data=True,
                                 SaveArtifacts=False,
                                     rep=None,
                                         show=False
@@ -105,3 +106,8 @@ def test_full_pipeline_generates_report(tmp_path = save_dir):
 
     # Success
     assert True
+    #%%
+    covariate_cat = np.random.randint(0, 1, size=n_samples)    # categorical
+    print( covariate_cat)
+
+# %%

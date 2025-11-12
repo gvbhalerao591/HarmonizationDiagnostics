@@ -101,71 +101,157 @@ def Cohens_D(Data, batch_indices, BatchNames=None):
     return np.array(pairwise_d), pair_labels
 
 # PcaCorr performs PCA on data and computes Pearson correlation of the top N principal components with a batch variable.
-def PcaCorr(Data, batch, N_components=None, covariates=None, variable_names=None):
+import numpy as np
+import pandas as pd
+import warnings
+from sklearn.decomposition import PCA
+from scipy.stats import pearsonr
+
+def PcaCorr(
+    Data,
+    batch,
+    N_components=None,
+    covariates=None,
+    variable_names=None,
+    *,
+    enforce_min_components_for_plotting=True
+):
     """
     Perform PCA and correlate top PCs with batch and optional covariates.
 
-    Parameters:
-    - Data: subjects x features (np.ndarray)
-    - batch: subjects x 1 (np.ndarray), batch labels
-    - N_components:  int, optional, number of principal components to analyze (default is 3)
-    - covariates:  subjects x covariates (np.ndarray), optional, additional variables to correlate with PCs
-    - variable_names: list of str, optional, names for the variables (default is None, will generate default names)
+    Parameters
+    ----------
+    Data : np.ndarray (n_samples x n_features)
+        Data matrix.
+    batch : array-like (n_samples,)
+        Batch labels (can be strings or numbers).
+    N_components : int or None
+        Requested number of principal components to compute/analyze.
+        If None, default is 4 (but constrained by data size).
+    covariates : None or array-like (n_samples x n_covariates)
+        Optional covariate matrix.
+    variable_names : None or list[str]
+        Optional names for the variables (first element expected 'batch' if present).
+    enforce_min_components_for_plotting : bool (default True)
+        If True, the routine will try to ensure at least 2 components are returned
+        when the dataset allows it (helps plotting PC1 vs PC2). If the data has
+        fewer than 2 possible components (e.g., n_features==1), this is not possible
+        and a warning will be emitted.
 
-    Returns:
-    - explained_variance: percentage of variance explained by each principal component
-    - score: PCA scores (subjects x N_components)
-    - PC_correlations:  dictionary with Pearson correlations of each PC with the batch and covariates
-
-    Raises:
-    - ValueError: if Data is not a 2D array or batch is not a
-    1D array, or if the number of samples in Data and batch do not match.
-    - ValueError: if covariates is not None and not a 2D array
-    - ValueError: if variable_names is not None and does not match the number of variables
+    Returns
+    -------
+    explained_variance : np.ndarray (n_components,)
+        Percent variance explained by each returned component (sum <= 100).
+    scores : np.ndarray (n_samples x n_components)
+        PCA scores (projection of samples).
+    PC_correlations : dict
+        Mapping variable name -> {'correlation': array, 'p_value': array}
+        where arrays have length == n_components.
+    pca : sklearn.decomposition.PCA
+        The fitted PCA object (useful for components_, explained_variance_ratio_, ...)
     """
+    # --- Input checks & normalization ---
     if not isinstance(Data, np.ndarray) or Data.ndim != 2:
         raise ValueError("Data must be a 2D numpy array (samples x features).")
-    if not isinstance(batch, (list, np.ndarray)) or np.ndim(batch) != 1:
-        raise ValueError("batch must be a 1D list or numpy array.")
-    if Data.shape[0] != len(batch):
+    n_samples, n_features = Data.shape
+
+    batch = np.asarray(batch)
+    if batch.ndim != 1:
+        raise ValueError("batch must be a 1D array-like of length n_samples.")
+    if batch.shape[0] != n_samples:
         raise ValueError("Number of samples in Data must match length of batch")
-    if N_components is None:
-        N_components = 4
 
-    # Run PCA
-    pca = PCA(n_components=N_components)
-    score = pca.fit_transform(Data)
-    explained_variance = pca.explained_variance_ratio_ * 100
-
-    # Combine batch and covariates
-    # Check if batch is numeric, if not convert to numeric codes
-    if batch.dtype.kind in {'U', 'S', 'O'}:  # string
-        batch, _ = pd.factorize(batch)   
-    batch = batch.astype(float)
-
-    variables = [batch.astype(float)]
+    # Covariates: if provided, convert to array and validate shape
     if covariates is not None:
-        variables.extend([covariates[:, i].astype(float) for i in range(covariates.shape[1])])
+        covariates = np.asarray(covariates)
+        if covariates.ndim != 2:
+            raise ValueError("covariates must be a 2D array (n_samples x n_covariates).")
+        if covariates.shape[0] != n_samples:
+            raise ValueError("covariates must have same number of rows as Data (samples).")
 
-    # Generate default variable names if not provided
+    # Decide how many components to compute
+    # Default desired = 4 if not given
+    desired = 4 if N_components is None else int(N_components)
+    max_possible = min(n_samples, n_features)
+    if max_possible <= 0:
+        raise ValueError("Data must have at least one sample and one feature.")
+    # Try to enforce at least 2 components for plotting when dataset allows it
+    if enforce_min_components_for_plotting and max_possible >= 2:
+        desired = max(desired, 2)
+    # Final number of components we will compute
+    n_comp = min(desired, max_possible)
+    if n_comp < desired:
+        warnings.warn(
+            f"Requested N_components={desired} reduced to {n_comp} due to data size "
+            f"(n_samples={n_samples}, n_features={n_features})."
+        )
+
+    # --- Fit PCA ---
+    pca = PCA(n_components=n_comp)
+    scores = pca.fit_transform(Data)   # shape (n_samples, n_comp)
+    explained_variance = (pca.explained_variance_ratio_ * 100.0)  # % per PC
+
+    # --- Prepare variables for correlation ---
+    # Factorize batch robustly (works for strings / numbers / mixed)
+    batch_codes, unique_batches = pd.factorize(batch)
+    # convert to float for Pearson r
+    batch_var = batch_codes.astype(float)
+
+    variables = [batch_var]
+    # Optional variables names (create defaults if not provided)
+    if covariates is not None:
+        # If covariates has column names (DataFrame), capture them
+        if isinstance(covariates, pd.DataFrame):
+            cov_arr = covariates.values
+            cov_names = list(map(str, covariates.columns))
+        else:
+            cov_arr = np.asarray(covariates)
+            cov_names = [f'covariate_{i+1}' for i in range(cov_arr.shape[1])]
+        # extend variables with each covariate column
+        variables.extend([cov_arr[:, i].astype(float) for i in range(cov_arr.shape[1])])
+    else:
+        cov_names = []
+
+    # Build variable names list (first should be 'batch' unless user provided different)
     if variable_names is None:
-        variable_names = ['batch'] + [f'covariate {i+1}' for i in range(len(variables) - 1)]
+        variable_names_out = ['batch'] + cov_names
+    else:
+        # Validate provided variable_names length matches number of variables
+        # Accept possibility that user included 'batch' as first element
+        if len(variable_names) == len(variables):
+            variable_names_out = list(variable_names)
+        elif len(variable_names) == len(variables) + 0 and str(variable_names[0]).lower() == "batch":
+            # e.g. user provided ['batch', 'Age', 'Sex'] while variables is [batch, Age, Sex]
+            variable_names_out = list(variable_names)
+        elif len(variable_names) == len(variables) - 0:
+            # allow case where user gave only covariate names (no 'batch')
+            variable_names_out = ['batch'] + list(variable_names)
+        else:
+            raise ValueError(
+                "variable_names length does not match number of variables (batch + covariates). "
+                f"Got variable_names length {len(variable_names)} but need {len(variables)}."
+            )
 
-    # Compute correlations
+    # --- Compute Pearson correlations between each PC and each variable ---
+    n_used_comps = scores.shape[1]
     PC_correlations = {}
-    for name, var in zip(variable_names, variables):
-        corrs = []
-        pvals = []
-        for i in range(min(N_components, score.shape[1])):
-            corr, pval = pearsonr(score[:, i], var)
-            corrs.append(corr)
-            pvals.append(pval)
-        PC_correlations[name] = {
-            'correlation': np.array(corrs),
-            'p_value': np.array(pvals)
-        }
-        return explained_variance, score, PC_correlations
-# MahalanobisDistance computes the Mahalanobis distance (multivariate difference between batch and global centroids) 
+    for name, var in zip(variable_names_out, variables):
+        corrs = np.empty(n_used_comps, dtype=float)
+        pvals = np.empty(n_used_comps, dtype=float)
+        for i in range(n_used_comps):
+            try:
+                r, p = pearsonr(scores[:, i], var)
+            except Exception:
+                r, p = np.nan, np.nan
+            corrs[i] = r
+            pvals[i] = p
+        PC_correlations[name] = {'correlation': corrs, 'p_value': pvals}
+
+    # Return PCA object too so callers can access components_, mean_, etc.
+    return explained_variance, scores, PC_correlations, pca
+
+
+# MahalanobisDistance computes the Mahalanobis distance (multivariate difference between batch and global centroids)
 def MahalanobisDistance(Data=None, batch=None, covariates=None):
 
     """
@@ -376,72 +462,190 @@ def Variance_ratios(data, batch, covariates=None):
     return ratio_of_variance
 # Define a function to perform two-sample Kolmogorov-Smirnov test for distribution differences between
 # each unique batch pair and each batch with the overall distribution
-def KS_test(data, batch,feature_names=None):
-    # Define a function to perform two-sample Kolmogorov-Smirnov test for distribution differences between
-    # each unique batch pair and each batch with the overall distribution
+def KS_test(data,
+                batch,
+                feature_names=None,
+                compare_pairs=True,
+                compare_to_overall_excluding_batch=True,
+                min_batch_n=3,
+                alpha=0.05,
+                do_fdr=True):
     """
-    Args: data
-    - data: subjects x features (np.ndarray)
-    - batch: subjects x 1 (np.ndarray), batch labels
-    - feature_names: list of str, optional, names for the features (default is None, will generate default names)
+    Improved two-sample KS testing for batch effect detection.
+
+    Changes to old code 03/11/2025:
+      - When comparing a batch to "overall", the overall distribution excludes that batch
+        by default (avoids dependence/bias).
+      - Optional pairwise batch-vs-batch comparisons preserved.
+      - Enforces a minimum sample size per group (min_batch_n).
+      - Returns both D-statistics (effect-size) and p-values, plus FDR-corrected p-values (BH).
+      - Returns small summary for each comparison: proportion_significant, mean_D.
+      - Handles feature names.
+
+    Args:
+      data: (n_samples, n_features) numpy array
+      batch: array-like of length n_samples with batch labels
+      feature_names: optional list of feature names
+      compare_pairs: if True, include pairwise batch-vs-batch KS tests
+      compare_to_overall_excluding_batch: if True, compare batch to overall excluding that batch
+                                        (recommended). If False, compares to pooled overall (original behavior).
+      min_batch_n: minimum samples required in each group to run KS for that feature (default 3)
+      alpha: significance threshold for summary reporting
+      do_fdr: whether to compute Benjamini-Hochberg FDR-corrected p-values per comparison
+
     Returns:
-        - ks_results: dictionary with KS test statistic and p-value for each pair of batches and
-        each batch with the overall distribution
-    Raises:
-        - ValueError: if Data is not a 2D array or batch is not a
-        1D array, or if the number of samples in Data and batch do not match    
+      dict:
+        - keys are tuples like (b, 'overall') or (b1, b2)
+        - each value is a dict with:
+            'statistic': np.array of D statistics (length n_features)
+            'p_value': np.array of p-values (nan where test not run)
+            'p_value_fdr': np.array of BH-corrected p-values (if do_fdr else None)
+            'n_group1': array of sample counts per feature for group1 (same across features but kept for completeness)
+            'n_group2': array of counts for group2
+            'summary': {'prop_significant': float, 'mean_D': float}
+        - 'feature_names': list of feature names
     """
     import numpy as np
     from scipy.stats import ks_2samp
     from itertools import combinations
-    if not isinstance(data, np.ndarray) or data.ndim != 2:
-        raise ValueError("Data must be a 2D numpy array (samples x features).")
-    if not isinstance(batch, (list, np.ndarray)) or np.ndim(batch) !=1:
-        raise ValueError("batch must be a 1D list or numpy array.")
-    if data.shape[0] != len(batch):
-        raise ValueError("Number of samples in Data must match length of batch")
-    
+
+    def benjamini_hochberg(pvals):
+        """Simple BH FDR correction. pvals can contain np.nan; those are left as np.nan."""
+        p = np.asarray(pvals)
+        mask = ~np.isnan(p)
+        p_nonan = p[mask]
+        m = len(p_nonan)
+        if m == 0:
+            return np.full_like(p, np.nan, dtype=float)
+        order = np.argsort(p_nonan)
+        ranked = np.empty(m, dtype=float)
+        # compute adjusted p in reverse order
+        cummin = 1.0
+        adj = np.empty(m, dtype=float)
+        for i in range(m-1, -1, -1):
+            rank = i + 1
+            pval = p_nonan[order[i]]
+            adj_val = min(cummin, pval * m / rank)
+            cummin = adj_val
+            adj[i] = adj_val
+        # put back in original order
+        adj_ordered = np.empty(m, dtype=float)
+        adj_ordered[order] = adj
+        out = np.full_like(p, np.nan, dtype=float)
+        out[mask] = np.minimum(adj_ordered, 1.0)
+        return out
+
+    # ---- Validation ----
+    if not hasattr(data, "ndim") or data.ndim != 2:
+        raise ValueError("data must be a 2D numpy array (samples x features).")
+    n_samples, n_features = data.shape
     batch = np.array(batch)
+    if batch.ndim != 1 or len(batch) != n_samples:
+        raise ValueError("batch must be 1D and match number of samples in data.")
     unique_batches = np.unique(batch)
     if len(unique_batches) < 2:
-        raise ValueError("At least two unique batches are required to perform KS test.")
-    batch_data = {}
-    ks_results = {}
-    # Calculate variances for each feature in each batch
-    for b in unique_batches:
-        batch_data[b] = data[batch == b]
-        # Run two-sample KS test for each batch and the overall distribution
-        p_values = []
-        statistics = []
-        for feature_idx in range(data.shape[1]):
-            stat, p_value = ks_2samp(batch_data[b][:, feature_idx], data[:, feature_idx])
-            statistics.append(stat)
-            p_values.append(p_value)
-        # Store results as part of dictonary under label of batch and 'overall', find data by calling ks_results[(b, 'overall')]
-        ks_results[(b, 'overall')] = {
-            'statistic': np.array(statistics),
-            'p_value': np.array(p_values)
-        }
-    for b1, b2 in combinations(unique_batches, 2):
-        p_values = []
-        statistics = []
-        for feature_idx in range(data.shape[1]):
-            stat, p_value = ks_2samp(batch_data[b1][:, feature_idx], batch_data[b2][:, feature_idx])
-            statistics.append(stat)
-            p_values.append(p_value)
-        ks_results[(b1, b2)] = {
-            'statistic': np.array(statistics),
-            'p_value': np.array(p_values)
-        }
-    if feature_names is None:
-        feature_names = [f'feature {i+1}' for i in range(data.shape[1])]
-    ks_results['feature_names'] = feature_names
+        raise ValueError("At least two unique batches are required.")
 
+    if feature_names is None:
+        feature_names = [f"feature_{i+1}" for i in range(n_features)]
+    elif len(feature_names) != n_features:
+        raise ValueError("feature_names length must match number of features.")
+
+    ks_results = {}
+    # Pre-slice batch indices to avoid repeated boolean masks
+    batch_idx = {b: np.where(batch == b)[0] for b in unique_batches}
+
+    # Helper to run KS for two index sets
+    def run_ks_for_indices(idx1, idx2):
+        stats = np.full(n_features, np.nan, dtype=float)
+        pvals = np.full(n_features, np.nan, dtype=float)
+        n1 = np.full(n_features, 0, dtype=int)
+        n2 = np.full(n_features, 0, dtype=int)
+        for fi in range(n_features):
+            x = data[idx1, fi]
+            y = data[idx2, fi]
+            n1[fi] = x.size
+            n2[fi] = y.size
+            if x.size >= min_batch_n and y.size >= min_batch_n:
+                try:
+                    stat, p = ks_2samp(x, y, alternative='two-sided', mode='auto')
+                    stats[fi] = stat
+                    pvals[fi] = p
+                except Exception:
+                    stats[fi] = np.nan
+                    pvals[fi] = np.nan
+            else:
+                # not enough samples to run KS reliably
+                stats[fi] = np.nan
+                pvals[fi] = np.nan
+        return stats, pvals, n1, n2
+
+    # Compare each batch to overall (pooled) or to overall excluding the batch
+    for b in unique_batches:
+        idx_b = batch_idx[b]
+        if compare_to_overall_excluding_batch:
+            # overall excluding this batch
+            idx_other = np.setdiff1d(np.arange(n_samples), idx_b, assume_unique=True)
+        else:
+            # pooled overall includes the batch (original behavior)
+            idx_other = np.arange(n_samples)
+        if idx_b.size == 0 or idx_other.size == 0:
+            # shouldn't happen, but guard
+            stats = np.full(n_features, np.nan, dtype=float)
+            pvals = np.full(n_features, np.nan, dtype=float)
+            n1 = np.zeros(n_features, dtype=int)
+            n2 = np.zeros(n_features, dtype=int)
+        else:
+            stats, pvals, n1, n2 = run_ks_for_indices(idx_b, idx_other)
+
+        result = {
+            'statistic': stats,
+            'p_value': pvals,
+            'p_value_fdr': None,
+            'n_group1': n1,
+            'n_group2': n2,
+            'summary': {
+                'prop_significant': float(np.sum((pvals < alpha) & ~np.isnan(pvals)) / np.sum(~np.isnan(pvals))) if np.any(~np.isnan(pvals)) else 0.0,
+                'mean_D': float(np.nanmean(stats))
+            }
+        }
+        if do_fdr:
+            result['p_value_fdr'] = benjamini_hochberg(pvals)
+        ks_results[(b, 'overall')] = result
+
+    # Pairwise comparisons if requested
+    if compare_pairs:
+        for b1, b2 in combinations(unique_batches, 2):
+            idx1 = batch_idx[b1]
+            idx2 = batch_idx[b2]
+            stats, pvals, n1, n2 = run_ks_for_indices(idx1, idx2)
+            result = {
+                'statistic': stats,
+                'p_value': pvals,
+                'p_value_fdr': None,
+                'n_group1': n1,
+                'n_group2': n2,
+                'summary': {
+                    'prop_significant': float(np.sum((pvals < alpha) & ~np.isnan(pvals)) / np.sum(~np.isnan(pvals))) if np.any(~np.isnan(pvals)) else 0.0,
+                    'mean_D': float(np.nanmean(stats))
+                }
+            }
+            if do_fdr:
+                result['p_value_fdr'] = benjamini_hochberg(pvals)
+            ks_results[(b1, b2)] = result
+
+    ks_results['params'] = {
+        'compare_pairs': compare_pairs,
+        'compare_to_overall_excluding_batch': compare_to_overall_excluding_batch,
+        'min_batch_n': min_batch_n,
+        'alpha': alpha,
+        'do_fdr': do_fdr
+    }
     return ks_results
+
 # Define a function to perform the Levene's test for variance differences between each unique batch pair
 def Levene_test(data, batch, centre = 'median'):
     # Define a function to perform the Levene's test for variance differences between each unique batch pair
-
     """
     Args: data
     - data: subjects x features (np.ndarray)
@@ -560,6 +764,46 @@ def setup_help_only_parser():
         Example usage:
         DiagnosticFunctions.mahalanobis_distance --Data <data.npy> --batch <batch.npy>
         Returns a dictionary with Mahalanobis distances for each pair of batches.
+        '''
+    )
+
+    parser_variance_ratios = subparsers.add_parser(
+
+        'Variance_ratios',
+        help='Calculate variance ratios between batches',
+        description="""
+        Calculates the feature-wise ratio of variance between each unique batch pair,
+        optionally removing covariate effects via linear regression.
+        """,
+        epilog = '''
+        Example usage:
+        DiagnosticFunctions.Variance_ratios --Data <data.npy> --batch <batch.npy>
+        Returns a dictionary with variance ratios for each pair of batches.
+        '''
+    )
+    parser_ks_test = subparsers.add_parser(
+        'KS_test',
+        help='Perform KS test between batches',
+        description="""
+        Performs two-sample Kolmogorov-Smirnov test for distribution differences between
+        each unique batch pair and each batch with the overall distribution.
+        """,
+        epilog = '''
+        Example usage:
+        DiagnosticFunctions.KS_test --Data <data.npy> --batch <batch.npy>
+        Returns a dictionary with KS test statistics and p-values for each pair of batches.
+        '''
+    )
+    parser_levene_test = subparsers.add_parser(
+        'Levene_test',
+        help='Perform Levene\'s test between batches',
+        description="""
+        Performs Levene's test for variance differences between each unique batch pair.
+        """,
+        epilog = '''
+        Example usage:
+        DiagnosticFunctions.Levene_test --Data <data.npy> --batch <batch.npy>
+        Returns a dictionary with Levene's test statistics and p-values for each pair of batches.
         '''
     )
 
