@@ -254,10 +254,6 @@ def set_report_path(report, save_dir: str | None = None, report_name: str | None
     save_dir = Path(save_dir)
     save_dir.mkdir(parents=True, exist_ok=True)
 
-    # Base filename
-    if report_name is None:
-        report_name = "DiagnosticReport.html"
-
     # Add timestamp if requested
     if timestamp:
         stem, ext = os.path.splitext(report_name)

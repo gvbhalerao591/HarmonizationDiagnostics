@@ -5,9 +5,11 @@ def DiagnosticReport(data, batch,
                             save_data=False,
                             save_data_name=None,
                             save_dir=None,
+                            report_name=None,
                                 SaveArtifacts=False,
                                 rep=None,
-                                    show=False):
+                                    show=False,
+                                    timestamped_reports=True):
     """
     Create a diagnostic report for dataset differences across batches, taking into account covariates
     when relevant.
@@ -85,8 +87,17 @@ def DiagnosticReport(data, batch,
             save_dir = os.getcwd()
         else:
             logger.info(f"Saving to directory: {save_dir}")
-        report_path = set_report_path(report, save_dir, report_name="DiagnosticReport.html")
+
+        if report_name is None:
+            report_name = "DiagnosticReport.html"
+        else:
+            if not report_name.endswith(".html"):
+                report_name += ".html"
+                
+        report_path = set_report_path(report, save_dir, report_name=report_name,timestamp=timestamped_reports)
         # Define variable to work as linebreak, to be improved at a later date
+
+
         line_break_in_text = "-----------------------------------------------------------------------------------------------------------------------------"
 
         report.text_simple('Summary of dataset:')  
@@ -147,12 +158,38 @@ def DiagnosticReport(data, batch,
         # PROVIDE GUIDANCE ON CORRECT APPROACH TO PCA (EG: depening on sample size and well defined effects)
         ##############################################################################################
 
+
+
         ##############################################################################################
 
         # Begin the reporting of diagnostic tests
         logger.info("Beginning diagnostic tests")
         # Additive tests first
         report.text_simple(" The order of tests is as follows: Additive tests, Multiplicative tests, Tests of distribution")
+        report.text_simple(" Additive tests assess differences in means between batches, Multiplicative tests assess differences in variances between batches, and Distribution tests assess overall distributional differences between batches")
+        
+        report.text_simple("" \
+        "Additive tests: Cohens D test for mean differences, Mahalanobis distance test for multivariate mean differences" \
+        " "\
+        "\nMultiplicative tests: Levene's test for variance differences, Variance ratio test between each unique batch pair" \
+        " "\
+        "\nBoth additive and multiplicative tests: PCA visualization of data colored by batch, PCA correlation with batch and covariates" \
+        " "\
+        "\nTests of distribution: Two-sample Kolmogorov-Smirnov test for distribution differences between each unique batch pair")
+        # Report the sample size needed for each test to be reliable
+
+        report.text_simple(line_break_in_text)
+
+        report.text_simple(" THIS IS A PLACE HOLDER, REPLACE WITH POWER ANALYSIS TO BASE GUIDELINES ON"
+        " Note on sample sizes needed for reliable test results: " \
+        "\nCohen's D test: minimum 20 samples per batch" \
+        "\nMahalanobis distance test: minimum 30 samples per batch" \
+        "\nLevene's test: minimum 15 samples per batch" \
+        "\nVariance ratio test: minimum 15 samples per batch" \
+        "\nPCA: minimum 30 samples overall, more samples needed for reliable clustering diagnostics" \
+        "\nTwo-sample Kolmogorov-Smirnov test: minimum 10 samples per batch" \
+        "\nIf any batch has less than the minimum samples needed, please interpret results with caution as they may not be reliable")
+
         report.text_simple(line_break_in_text)   
         logger.info("Additive tests:")
 
@@ -163,12 +200,6 @@ def DiagnosticReport(data, batch,
         # If save data is set to true, add cohens d results to the saved dataframe
         report.text_simple("Cohen's D test for mean differences completed")
 
-        if save_data:
-            # Create a new entry in the data_dict for each pairwise batch comparison
-            for i, (b1, b2) in enumerate(pairlabels):
-                col_name = f'CohensD_Batch{b1}_vs_Batch{b2}'
-                data_dict[col_name] = cohens_d_results[:, i]    
-
         PlotDiagnosticResults.Cohens_D_plot(cohens_d_results,pair_labels=pairlabels,rep=report)
         # Add a summary to the results of the Cohen's D test in the log
         # Report the number of features with small, medium and large effect sizes based on Cohen's D thresholds
@@ -176,7 +207,11 @@ def DiagnosticReport(data, batch,
  
         for i, (b1, b2) in enumerate(pairlabels):
             report.text_simple(f"Summary of Cohen's D results for batch comparison: {b1} vs {b2}")
-            cohens_d_pair = cohens_d_results[:, i]
+            cohens_d_pair = cohens_d_results[i, :]
+            col_name = f'CohensD_{b1}_vs_{b2}'
+            if save_data:
+                data_dict[col_name] = cohens_d_pair
+                print(cohens_d_pair)
             small_effect = (np.abs(cohens_d_pair) < 0.2).sum()
             medium_effect = ((np.abs(cohens_d_pair) >= 0.2) & (np.abs(cohens_d_pair) < 0.5)).sum()
             large_effect = (np.abs(cohens_d_pair) >= 0.5).sum()
@@ -200,16 +235,17 @@ def DiagnosticReport(data, batch,
         pairwise_distances = mahalanobis_results['pairwise_raw']
         logger.info("Pairwise test results")
         for (b1, b2), dist in pairwise_distances.items():
-            report.text_simple(f"Mahalanobis distance between batch {b1} and batch {b2}: {dist:.4f}")
+            report.text_simple(f"Mahalanobis distance between {b1} and {b2}: {dist:.4f}\n"\
+                               " ")
         # Return summary of centroid distances
         logger.info("Unique batch to global centroied distance test results") 
         centroid_distances = mahalanobis_results['centroid_raw']
-        for b, dist in centroid_distances.items():
-            report.text_simple(f"Mahalanobis distance of batch {b} to overall centroid: {dist:.4f}")
+        for (b1, b2), dist in centroid_distances.items():
+            report.text_simple(f"Mahalanobis distance of {b1} to overall centroid: {dist:.4f}\n")
 
         centroid_resid_distance = mahalanobis_results['centroid_resid']
-        for b, dist in centroid_resid_distance.items():
-            report.text_simple(f"Mahalanobis distance of batch {b} to overall centroid after residualising by covariates: {dist:.4f}")
+        for (b1, b2), dist in centroid_resid_distance.items():
+            report.text_simple(f"Mahalanobis distance of {b1} to overall centroid after residualising by covariates: {dist:.4f}\n")
 
         if save_data:
             # Create a new entry in the data_dict for Mahalanobis distances to overall centroid
@@ -283,13 +319,12 @@ def DiagnosticReport(data, batch,
             logger.info(
                 f"Variance ratio {b1} vs {b2}: median log={median_log:.3f} "
                 f"(IQR {iqr_log[0]:.3f}–{iqr_log[1]:.3f}), "
-                f"{prop_higher*100:.1f}% of features higher in batch {b1}."
+                f"{prop_higher*100:.1f}% of features higher in batch {b1}\n"
             )
 
         # Make a summary DataFrame for easy export or inclusion in reports
         summary_df = pd.DataFrame(summary_rows)
         # Add the summary dataframe to the saved data if save_data is true
-
         # Example: write to your report
         PlotDiagnosticResults.variance_ratio_plot(ratio_array,labels,rep=report)
         report.log_text("Variance ratio plot(s) added to report")
@@ -337,8 +372,8 @@ def DiagnosticReport(data, batch,
                                                                             batch=batch,
                                                                             covariates=covariates,
                                                                             variable_names=covariate_names,
-                                                                            n_pcs_for_clustering=None,
-                                                                            n_clusters_for_kmeans=None,
+                                                                            n_pcs_for_clustering=n_pcs_for_clustering,
+                                                                            n_clusters_for_kmeans=n_pcs_for_clustering-1,
                                                                             rep=report,
                                                                             random_state=0,
                                                                             show=False)
@@ -428,8 +463,7 @@ def PostHarmonizationDiagnosticReport(data_pre, data_post,
     when relevant.
     The different tests used are all defined in DiagnosticFunctions.py and the plots in PlotDiagnosticResults, alot of the tests will match those used
     in DiagnosticReport function.
-
-    
+  
     Args:  
         data_pre: Pre-harmonization data (subjects x features)
         data_post: Post-harmonization data (subjects x features)

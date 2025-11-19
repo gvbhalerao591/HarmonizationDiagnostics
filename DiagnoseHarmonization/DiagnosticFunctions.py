@@ -98,6 +98,8 @@ def Cohens_D(Data, batch_indices, BatchNames=None):
         pairwise_d.append(d)
         pair_labels.append((BatchNames_map[g], 'Overall'))
 
+    # Convert to numpy array (shape: num_features x num_pairs) and transpose
+    
     return np.array(pairwise_d), pair_labels
 
 # PcaCorr performs PCA on data and computes Pearson correlation of the top N principal components with a batch variable.
@@ -249,7 +251,6 @@ def PcaCorr(
 
     # Return PCA object too so callers can access components_, mean_, etc.
     return explained_variance, scores, PC_correlations, pca
-
 
 # MahalanobisDistance computes the Mahalanobis distance (multivariate difference between batch and global centroids)
 def MahalanobisDistance(Data=None, batch=None, covariates=None):
