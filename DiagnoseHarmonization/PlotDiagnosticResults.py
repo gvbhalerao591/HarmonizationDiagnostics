@@ -9,6 +9,7 @@ from functools import wraps
 from typing import Any, Callable, List, Tuple, Optional
 import matplotlib.pyplot as plt
 import matplotlib.figure as mfig
+from scipy import stats
 
 def _is_figure(obj) -> bool:
     return isinstance(obj, mfig.Figure)
@@ -105,6 +106,21 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from collections.abc import Sequence
+
+"""
+    Complementary plotting functions for the functions in DiagnosticFunctions.py
+
+    Functions:
+    - Z_Score_Plot: Plot histogram and heatmap of Z-scored data by batch.
+    - Cohens_D_plot: Plot Cohen's d effect sizes with histograms.
+    - variance_ratio_plot: Plot variance ratios between batches.
+    - PC_corr_plot: Generate PCA diagnostic plots including scatter plots and correlation heatmaps.
+    - PC_clustering_plot: K-means clustering and silhouette analysis of PCA results by batch.
+    - Ks_Plot: Plot KS statistic between batches.
+    - 
+
+
+"""
 """----------------------------------------------------------------------------------------------------------------------------"""
 """---------------------------------------- Plotting functions for Cohens D results ----------------------------------"""
 """----------------------------------------------------------------------------------------------------------------------------"""
@@ -114,6 +130,84 @@ import numpy as np
 from typing import Optional
 import pandas as pd
 
+@rep_plot_wrapper
+def Z_Score_Plot(data, batch, probablity_distribution=False,draw_PDF=True):
+    """
+    Plots the median centered Z-score data as a heatmap and as a histogram of all scores.
+    Re-order by batch for better visualisaion in the heatmap, also plot batch seperators on heatmap.
+    Args:
+        data (np.ndarray): 2D array of Z-scored data (samples x features).
+    Returns:
+        None: Displays plot of Z-scored data and a histogram of the values on different axes.
+    """
+    # Histogram of all Z-scores plotted by batch variable
+    import matplotlib.pyplot as plt
+    import matplotlib.gridspec as gridspec
+    import numpy as np
+    from matplotlib.figure import Figure
+    from scipy import stats
+
+    # ---- Validation ----
+    if not isinstance(data, np.ndarray):
+        raise ValueError("data must be a NumPy array.")
+    if data.ndim != 2:
+        raise ValueError("data must be a 2D array (samples x features).")
+    if not isinstance(batch, np.ndarray):
+        if isinstance(batch, list):
+            batch = np.array(batch)
+        else:
+            raise ValueError("batch must be a NumPy array or a list.")
+    
+    # Sort data by batch, batch can either be numeric or string labels here:
+    sorted_indices = np.argsort(batch)
+    sorted_data = data[sorted_indices, :]
+    sorted_batch = batch[sorted_indices]
+    unique_batches, batch_counts = np.unique(sorted_batch, return_counts=True)  
+    # Create figure with gridspec
+    fig = plt.figure(figsize=(14, 8))
+    # Loop over unique batches and plot as histogram on same axis:
+    ax1 = fig.add_subplot()
+    if probablity_distribution==True:
+        plot_type = 'density'
+    else:
+        plot_type = 'frequency'
+
+
+    for i in np.unique(batch):
+        batch_data = data[batch == i, :].flatten()
+
+        ax1.hist(batch_data, bins=80, density=plot_type, alpha=0.5, label=str(i))
+        # Draw an estimated normal distribution curve over histogram:
+        if draw_PDF==True:
+            mu, std = np.mean(batch_data), np.std(batch_data)
+            xmin, xmax = ax1.get_xlim()
+            x = np.linspace(xmin, xmax, 100)
+            p = stats.norm.pdf(x, mu, std)
+            ax1.plot(x, p, linewidth=2)
+
+    ax1.set_xlabel(plot_type)
+    ax1.invert_xaxis()
+    ax1.yaxis.tick_right()
+    ax1.yaxis.set_label_position("right")
+    ax1.legend(title="Batch")
+    fig2 = plt.figure(figsize=(14, 8))
+    ax2 = fig2.add_subplot()
+    im = ax2.imshow(sorted_data.T, aspect='auto', cmap='viridis', interpolation='nearest')
+    ax2.set_xlabel("Samples (sorted by batch)")
+    ax2.set_ylabel("Features")
+    ax2.set_title("Z-scored Data Heatmap")
+    # Add batch seperators:
+    batch_start = 0
+    for count in batch_counts:
+        batch_start += count
+        ax2.axvline(x=batch_start - 0.5, color='black', linestyle='--', linewidth=1)
+    fig.colorbar(im, ax=ax2, orientation='vertical', label='Z-score')
+    figs = []
+    figs.append(("Z-score histogram", fig))
+    figs.append(("Z-score heatmap", fig2))
+    return figs
+
+@rep_plot_wrapper
 def Cohens_D_plot(
     cohens_d: np.ndarray,
     pair_labels: list,
@@ -150,7 +244,21 @@ def Cohens_D_plot(
         ax2.set_xlabel("Feature Index")
         ax2.set_ylabel("Cohen's d")
         ax2.set_title(f"Effect Size (Cohen's d) for {pair_labels[i]}")
-        fig.tight_layout()
+        #fig.tight_layout()
+        ax2.grid(True)
+        # Ensure equal y-limits for fair comparison
+        # Draw horizontal lines for small/medium/large effect sizes, green small, orange medium, red large
+        for thresh, color, label in [ (0.2, 'green', 'Small'), (0.5, 'orange', 'Medium'), (0.8, 'red', 'Large') ]:
+            ax2.axhline(y=thresh, color=color, linestyle='--', linewidth=1)
+            ax2.axhline(y=-thresh, color=color, linestyle='--', linewidth=1)
+            ax2.text(cohens_d.shape[1]-1, thresh, f' {label}', color=color, va='bottom', ha='right', fontsize=8)
+            ax2.text(cohens_d.shape[1]-1, -thresh, f' {label}', color=color, va='top', ha='right', fontsize=8)
+        # Set limits to have equal negatice/positive range around zero
+        ylims = ax2.get_ylim()
+        max_abs = max(abs(ylims[0]), abs(ylims[1]))
+        ax2.set_ylim(-max_abs, max_abs)
+        ax1.set_ylim(-max_abs, max_abs)
+
 
         caption_i = caption or f"Cohen's d — {pair_labels[i]}"
         if rep is not None:
@@ -239,13 +347,31 @@ def PC_corr_plot(
     variable_names=None,
     PC_correlations=False,
     *,
-    show: bool = False
+    show: bool = False,
+    cluster_batches: bool = False
 ):
     """
     Generate multiple PCA diagnostic plots and return a list of (caption, fig).
-    Robust handling of variable_names:
-      - If variable_names includes 'batch' as the first name, the rest are treated as covariate names.
-      - Otherwise variable_names is interpreted as covariate names (must match covariates.shape[1]).
+
+    Improvements / behavior:
+      - covariates may be a numpy array (2D), a pandas.DataFrame, or a structured numpy array.
+      - If covariates has column names (DataFrame.columns or structured dtype.names), those names are used.
+      - If covariates is a plain ndarray, variable_names (if provided) will be used as covariate names.
+      - variable_names may optionally include 'batch' as the first element: ['batch', 'Age', 'Sex'].
+      - If no covariate names are available, defaults "Covariate1", "Covariate2", ...
+
+
+      K-means clustering of PCA points by batch and covariates to be added in future edit, additionally, 
+      silhouette score calculation for batch also added. (Future work may add similar implementation for covariates if needed).
+
+    Args:
+        PrincipleComponents (np.ndarray): 2D array of PCA components (samples x components).
+        batch (np.ndarray): 1D array of batch labels for each sample.
+        covariates (Optional[Union[np.ndarray, pd.DataFrame]]): Optional covariate data.
+        variable_names (Optional[List[str]]): Optional list of variable names for batch and covariates.
+        PC_correlations (bool): If True, generate correlation heatmap.
+        show (bool): If True, display plots immediately.
+        
     """
     import numpy as np
     import pandas as pd
@@ -254,7 +380,7 @@ def PC_corr_plot(
 
     figs = []
 
-    # Validation
+    # Basic validation
     if not isinstance(PrincipleComponents, np.ndarray) or PrincipleComponents.ndim != 2:
         raise ValueError("PrincipleComponents must be a 2D numpy array (samples x components).")
     if not isinstance(batch, np.ndarray) or batch.ndim != 1:
@@ -268,48 +394,76 @@ def PC_corr_plot(
     # Build DataFrame of PCs
     PC_Names = [f"PC{i+1}" for i in range(PrincipleComponents.shape[1])]
     df = pd.DataFrame(PrincipleComponents, columns=PC_Names)
-    df["batch"] = batch
 
-    # --- Interpret variable_names robustly ---
-    cov_names = None  # final covariate names we will use to map covariates columns
+    # Decide batch column name (allow variable_names to include 'batch' as first element)
+    batch_col_name = "batch"
+    # If variable_names explicitly provided and starts with "batch", capture it as possible batch name
+    if variable_names is not None and len(variable_names) > 0 and str(variable_names[0]).lower() == "batch":
+        # use the exact provided first name (preserve case) as batch label
+        batch_col_name = variable_names[0]
+    
+
+    df[batch_col_name] = batch
+    # Change batch to numeric codes to prevent issues in plotting and calculating correlation:
+
+    # --- Handle covariates robustly and determine covariate names ---
+    cov_names = []
+    cov_matrix = None  # numeric matrix (n_samples x n_covariates) used for correlations/plots
+
     if covariates is not None:
-        covariates = np.asarray(covariates)
-        if covariates.ndim != 2:
-            raise ValueError("covariates must be a 2D array (samples x num_covariates).")
-        if covariates.shape[0] != PrincipleComponents.shape[0]:
-            raise ValueError("Number of rows in covariates must match number of samples.")
-
-        # If user provided variable_names:
-        if variable_names is not None:
-            # Option B: allow variable_names starting with 'batch' followed by covariate names
-            if len(variable_names) == covariates.shape[1]:
-                # user supplied only covariate names (good)
-                cov_names = list(variable_names)
-            elif (
-                len(variable_names) == covariates.shape[1] + 1 and
-                str(variable_names[0]).lower() == "batch"
-            ):
-                # user included 'batch' as first element
-                cov_names = list(variable_names[1:])
-            else:
-                # inconsistent lengths — raise a helpful error
-                raise ValueError(
-                    "variable_names length does not match number of covariates.\n"
-                    f"covariates has {covariates.shape[1]} columns, "
-                    f"but variable_names has length {len(variable_names)}.\n"
-                    "If you include 'batch' in variable_names, put it first (e.g. ['batch', 'Age', 'Sex'])."
-                )
+        # If DataFrame: use its column names
+        if isinstance(covariates, pd.DataFrame):
+            cov_matrix = covariates.values
+            cov_names = list(map(str, covariates.columns))
+        # Structured numpy array with named fields
+        elif isinstance(covariates, np.ndarray) and covariates.dtype.names is not None:
+            cov_names = [str(n) for n in covariates.dtype.names]
+            # stack named columns into a 2D array
+            cov_matrix = np.vstack([covariates[name] for name in cov_names]).T
         else:
-            # no variable_names provided — create defaults
-            cov_names = [f"Covariate{i+1}" for i in range(covariates.shape[1])]
+            # array-like (convert to ndarray)
+            cov_matrix = np.asarray(covariates)
+            if cov_matrix.ndim != 2:
+                raise ValueError("covariates must be 2D (samples x num_covariates).")
+            if cov_matrix.shape[0] != PrincipleComponents.shape[0]:
+                raise ValueError("Number of rows in covariates must match number of samples.")
 
-        # assign covariates to df columns using cov_names
+            # If variable_names provided: it may either be exactly covariate names,
+            # or include 'batch' as first element followed by covariate names.
+            if variable_names is not None:
+                # If user included 'batch' as first element, strip it.
+                if len(variable_names) == cov_matrix.shape[1] + 1 and str(variable_names[0]).lower() == "batch":
+                    cov_names = [str(x) for x in variable_names[1:]]
+                elif len(variable_names) == cov_matrix.shape[1]:
+                    cov_names = [str(x) for x in variable_names]
+                else:
+                    # inconsistent lengths: raise helpful error
+                    raise ValueError(
+                        "variable_names length does not match number of covariates.\n"
+                        f"covariates has {cov_matrix.shape[1]} columns, "
+                        f"but variable_names has length {len(variable_names)}.\n"
+                        "If you include 'batch' in variable_names, put it first (e.g. ['batch', 'Age', 'Sex'])."
+                    )
+            else:
+                # No variable_names: create defaults
+                cov_names = [f"Covariate{i+1}" for i in range(cov_matrix.shape[1])]
+
+        # Finally, assign covariate columns to df using cov_names
+        # (if we reached here cov_matrix and cov_names should be set)
+        if cov_matrix is None:
+            raise ValueError("Unable to interpret covariates input; please supply a DataFrame, structured array, or 2D ndarray.")
+        # Double-check shapes
+        if cov_matrix.shape[0] != PrincipleComponents.shape[0]:
+            raise ValueError("Number of rows in covariates must match number of samples.")
+        if cov_matrix.shape[1] != len(cov_names):
+            # defensive: if Pandas columns count mismatch (shouldn't happen), regenerate names
+            cov_names = [f"Covariate{i+1}" for i in range(cov_matrix.shape[1])]
+
         for i, name in enumerate(cov_names):
-            df[name] = covariates[:, i]
+            df[name] = cov_matrix[:, i]
     else:
-        # no covariates present; ensure variable_names is either None or empty
+        # No covariates present; ensure variable_names is either None or only contains 'batch'
         if variable_names is not None:
-            # if variable_names included 'batch' only, that's okay; ignore it
             if not (len(variable_names) == 1 and str(variable_names[0]).lower() == "batch"):
                 raise ValueError("variable_names provided but covariates is None. Provide covariates or remove variable_names.")
         cov_names = []
@@ -317,21 +471,24 @@ def PC_corr_plot(
     # --- 1) PCA scatter by batch ---
     fig1, ax = plt.subplots(figsize=(8, 6))
     for b in unique_batches:
-        ax.scatter(df.loc[df["batch"] == b, "PC1"], df.loc[df["batch"] == b, "PC2"], label=f"Batch {b}", alpha=0.7)
+        ax.scatter(df.loc[df[batch_col_name] == b, "PC1"], df.loc[df[batch_col_name] == b, "PC2"], label=f"{batch_col_name} {b}", alpha=0.7)
     ax.set_xlabel("Principal Component 1")
     ax.set_ylabel("Principal Component 2")
     ax.set_title("PCA Scatter Plot by Batch")
     ax.legend()
     ax.grid(True)
     figs.append(("PCA scatter by batch", fig1))
-
+    
+    batch_numeric = pd.Categorical(batch).codes
+    batch_col_code = f"{batch_col_name}_code"
+    df[batch_col_code] = batch_numeric
     # --- 2) PCA scatter by each covariate (if present) ---
     if cov_names:
         for name in cov_names:
             vals = df[name].values
             fig, ax = plt.subplots(figsize=(8, 6))
+            # treat small-unique-count as categorical
             if len(np.unique(vals)) <= 20:
-                # categorical
                 for cat in np.unique(vals):
                     sel = df[name] == cat
                     ax.scatter(df.loc[sel, "PC1"], df.loc[sel, "PC2"], label=f"{name}={cat}", alpha=0.6)
@@ -341,29 +498,220 @@ def PC_corr_plot(
             ax.set_xlabel("Principal Component 1")
             ax.set_ylabel("Principal Component 2")
             ax.set_title(f"PCA Scatter Plot by {name}")
-            ax.legend(loc="best", fontsize="small", frameon=True)
+            # legend can be large; show only for categorical
+            if len(np.unique(vals)) <= 20:
+                ax.legend(loc="best", fontsize="small", frameon=True)
             ax.grid(True)
             figs.append((f"PCA scatter by {name}", fig))
 
     # --- 3) Correlation heatmap if requested ---
     if PC_correlations:
-        if covariates is not None:
-            combined_data = np.column_stack((PrincipleComponents, batch.reshape(-1, 1), covariates))
-            combined_names = PC_Names + ["Batch"] + cov_names
+        # create combined_data and combined_names in the same order used for corr matrix
+        if cov_names:
+            combined_data = np.column_stack((PrincipleComponents, df[batch_col_code].values.reshape(-1, 1), df[cov_names].values))
+            combined_names = PC_Names + [batch_col_code] + cov_names
         else:
-            combined_data = np.column_stack((PrincipleComponents, batch.reshape(-1, 1)))
-            combined_names = PC_Names + ["Batch"]
+            combined_data = np.column_stack((PrincipleComponents, df[batch_col_code].values.reshape(-1, 1)))
+            combined_names = PC_Names + [batch_col_code]
 
         corr = np.corrcoef(combined_data.T)
         fig, ax = plt.subplots(figsize=(10, 8))
         sns.heatmap(corr, annot=True, fmt=".2f", cmap="coolwarm", xticklabels=combined_names, yticklabels=combined_names, ax=ax)
         ax.set_title("Correlation Matrix of PCs, Batch, and Covariates")
         figs.append(("PCA correlation matrix", fig))
-
+    
     # show only if requested
     if show:
         for _, f in figs:
-            f.show()
+            try:
+                f.show()
+            except Exception:
+                # some backends may not support show on Figure objects; ignore safely
+                pass
+
+    return figs
+@rep_plot_wrapper
+def pc_clustering_plot(
+    PrincipleComponents,
+    batch,
+    covariates=None,
+    variable_names=None,
+    n_pcs_for_clustering=None,
+    n_clusters_for_kmeans=None,
+    random_state=0,
+    *,
+    show=False
+):
+    """
+    NOTE TO USER: THIS FUNCTION IS A NEW ADDITION AND WAS PARTIALLY CREATED USING CHATGPT. PLEASE REVIEW CAREFULLY.
+    Compute clustering diagnostics on PCA (or any embedding).
+
+    Inputs:
+      - PrincipleComponents: ndarray (n_samples x n_components)
+      - batch: 1D array-like labels (length = n_samples)
+      - covariates: optional (not used for clustering but kept for API parity)
+      - variable_names: optional list (keeps same semantics as your other function)
+      - n_pcs_for_clustering: int or None (default = min(10, n_components))
+      - n_clusters_for_kmeans: int or None (default = number of unique batches)
+      - random_state: int
+      - show: bool -> call fig.show() if True
+
+    Returns:
+      - figs: list of (caption, matplotlib.Figure)
+      - metrics: dict with silhouette, ARI, NMI, contingency table, chi2, km_labels, etc.
+    """
+    import numpy as np
+    import pandas as pd
+    import matplotlib.pyplot as plt
+    import seaborn as sns
+
+    from sklearn.preprocessing import LabelEncoder
+    from sklearn.cluster import KMeans
+    from sklearn.metrics import silhouette_score, adjusted_rand_score, normalized_mutual_info_score
+    from scipy.stats import chi2_contingency
+
+    # --- input validation & normalization (mirrors your style) ---
+    if not isinstance(PrincipleComponents, np.ndarray) or PrincipleComponents.ndim != 2:
+        raise ValueError("PrincipleComponents must be a 2D numpy array (samples x components).")
+    if not isinstance(batch, np.ndarray):
+        batch = np.asarray(batch)
+    if batch.ndim != 1:
+        raise ValueError("batch must be a 1D array-like.")
+    if PrincipleComponents.shape[0] != batch.shape[0]:
+        raise ValueError("Number of samples in PrincipleComponents and batch must match.")
+    n_samples, n_components = PrincipleComponents.shape
+    unique_batches = np.unique(batch)
+    if len(unique_batches) < 1:
+        raise ValueError("batch must contain at least one label.")
+
+    # choose number of PCs to use for clustering diagnostics
+    if n_pcs_for_clustering is None:
+        n_pcs_for_clustering = min(10, n_components)
+    else:
+        n_pcs_for_clustering = min(int(n_pcs_for_clustering), n_components)
+    X = PrincipleComponents[:, :n_pcs_for_clustering]
+
+    # determine k for KMeans
+    n_batches = len(unique_batches)
+    k = n_clusters_for_kmeans or n_batches
+    k = int(k)
+    if not (1 <= k <= n_samples):
+        raise ValueError("n_clusters_for_kmeans must be between 1 and n_samples")
+
+    # label encode batch for metric functions
+    le = LabelEncoder()
+    try:
+        batch_enc = le.fit_transform(batch)
+    except Exception:
+        batch_enc = le.fit_transform(batch.astype(str))
+
+    figs = []
+    metrics = {}
+
+    # --- silhouette using batch as labels (if valid) ---
+    if 2 <= n_batches <= (n_samples - 1):
+        try:
+            sil = silhouette_score(X, batch_enc)
+            metrics["silhouette_using_batch"] = float(sil)
+        except Exception as e:
+            metrics["silhouette_using_batch"] = None
+            metrics["silhouette_error"] = str(e)
+    else:
+        metrics["silhouette_using_batch"] = None
+        metrics["silhouette_note"] = "silhouette requires 2 <= n_labels <= n_samples-1"
+
+    # --- KMeans clustering ---
+    # handle sklearn's n_init compatibility ('auto' introduced in newer sklearn)
+    try:
+        km = KMeans(n_clusters=k, random_state=random_state, n_init="auto")
+    except TypeError:
+        km = KMeans(n_clusters=k, random_state=random_state, n_init=10)
+    km_labels = km.fit_predict(X)
+    metrics["kmeans_n_clusters"] = int(k)
+    metrics["kmeans_labels"] = km_labels
+
+    # ARI / NMI against batch
+    try:
+        ari = adjusted_rand_score(batch_enc, km_labels)
+        nmi = normalized_mutual_info_score(batch_enc, km_labels)
+        metrics["kmeans_ari_vs_batch"] = float(ari)
+        metrics["kmeans_nmi_vs_batch"] = float(nmi)
+    except Exception as e:
+        metrics["kmeans_ari_vs_batch"] = None
+        metrics["kmeans_nmi_vs_batch"] = None
+        metrics["kmeans_metrics_error"] = str(e)
+
+    # contingency table + chi-square test
+    ct = pd.crosstab(pd.Series(batch, name="batch"), pd.Series(km_labels, name="kmeans_label"))
+    metrics["contingency_table_batch_vs_kmeans"] = ct
+    try:
+        chi2, pval, dof, expected = chi2_contingency(ct)
+        metrics["chi2_vs_kmeans"] = {"chi2": float(chi2), "pvalue": float(pval), "dof": int(dof)}
+    except Exception as e:
+        metrics["chi2_vs_kmeans"] = {"error": str(e)}
+
+    # --- Figures: KMeans scatter, compare vs batch, silhouette per-batch plot (if silhouette computed) ---
+    # 1) KMeans clusters (PC1 vs PC2)
+    fig_km, ax = plt.subplots(figsize=(8, 6))
+    for lbl in np.unique(km_labels):
+        sel = km_labels == lbl
+        ax.scatter(X[sel, 0], X[sel, 1], label=f"k={lbl}", alpha=0.7, s=35)
+    ax.set_xlabel("PC1")
+    ax.set_ylabel("PC2")
+    ax.set_title(f"KMeans (k={k}) on first {n_pcs_for_clustering} PCs")
+    ax.legend(loc="best", fontsize="small")
+    ax.grid(True)
+    figs.append((f"KMeans clustering (k={k})", fig_km))
+
+    # 2) Side-by-side comparison: colored by batch vs colored by kmeans
+    fig_cmp, axs = plt.subplots(1, 2, figsize=(14, 5))
+    # by batch
+    for b in unique_batches:
+        sel = batch == b
+        axs[0].scatter(X[sel, 0], X[sel, 1], label=str(b), alpha=0.6, s=30)
+    axs[0].set_title("By batch")
+    axs[0].set_xlabel("PC1"); axs[0].set_ylabel("PC2"); axs[0].legend(fontsize="small")
+    # by kmeans
+    for lbl in np.unique(km_labels):
+        sel = km_labels == lbl
+        axs[1].scatter(X[sel, 0], X[sel, 1], label=f"k={lbl}", alpha=0.6, s=30)
+    axs[1].set_title("By KMeans cluster")
+    axs[1].set_xlabel("PC1"); axs[1].set_ylabel("PC2"); axs[1].legend(fontsize="small")
+    fig_cmp.suptitle("Compare batch vs kmeans (PC1 vs PC2)")
+    figs.append(("Compare batch vs kmeans", fig_cmp))
+
+    # 3) Optional: silhouette per batch (if silhouette computed)
+    if metrics.get("silhouette_using_batch") is not None:
+        # compute individual sample silhouettes and average per batch
+        try:
+            from sklearn.metrics import silhouette_samples
+            sample_sil = silhouette_samples(X, batch_enc)
+            sil_by_batch = {}
+            for b in unique_batches:
+                sel = (batch == b)
+                if sel.sum() > 0:
+                    sil_by_batch[str(b)] = float(np.nanmean(sample_sil[sel]))
+                else:
+                    sil_by_batch[str(b)] = None
+            metrics["silhouette_by_batch"] = sil_by_batch
+
+            # plotting
+            fig_sil, ax = plt.subplots(figsize=(8, 4))
+            names = list(sil_by_batch.keys())
+            vals = [sil_by_batch[n] if sil_by_batch[n] is not None else np.nan for n in names]
+            ax.bar(names, vals)
+            ax.set_ylabel("Average silhouette (per-batch)")
+            ax.set_title("Average silhouette score per batch")
+            figs.append(("Silhouette per batch", fig_sil))
+        except Exception as e:
+            metrics["silhouette_by_batch_error"] = str(e)
+    # show if requested
+    if show:
+        for _, f in figs:
+            try:
+                f.show()
+            except Exception:
+                pass
 
     return figs
 
@@ -536,14 +884,10 @@ def mahalanobis_distance_plot(results: dict,
     ax_bar.set_ylabel("Mahalanobis distance")
     ax_bar.set_xlabel("Batch")
 
-    fig.tight_layout()
-    if show:
-        plt.show()
-
     axes = {"heatmap_raw": ax_raw, "bars": ax_bar}
     if has_resid:
         axes["heatmap_resid"] = ax_resid
-    fig.tight_layout()
+    #fig.tight_layout()
     if rep is not None:
         rep.log_plot(fig, "Mahalanobis distances (raw vs residual)")
         plt.close(fig)
@@ -553,193 +897,114 @@ def mahalanobis_distance_plot(results: dict,
     return fig, axes
 
 """----------------------------------------------------------------------------------------------------------------------------"""
-"""---------------------------------------- Plotting functions for Two-sample Kolmogorov-Smirnov test ----------------------------------"""
-"""----------------------------------------------------------------------------------------------------------------------------"""
-@rep_plot_wrapper
-def KS_plot(ks_results):
-    """
-    Plot KS test results produced by KS_test().
-
-    This version accepts either:
-      - the original ks_results returned by the KS_test you posted, i.e.
-        keys like (b,'overall') and (b1,b2) with values {'statistic': ..., 'p_value': ...}
-      - OR a dict containing 'pairwise_ks' mapping -> {(b1,b2): (stat_array, p_array), ...}
-        and 'feature_names'.
-
-    The plotting uses the minimum p-value across features as a single representative p-value
-    for each pair (so each pair produces one dot on the plot). Change to np.median or np.mean
-    if you want a different summary.
-    """
-    import matplotlib.pyplot as plt
-    import numpy as np
-    import matplotlib.gridspec as gridspec
-
-    # Basic validation
-    if not isinstance(ks_results, dict):
-        raise ValueError("ks_results must be a dictionary.")
-
-    # Extract feature names
-    if 'feature_names' in ks_results:
-        feature_names = ks_results['feature_names']
-    else:
-        raise ValueError("ks_results must contain 'feature_names'.")
-
-    # Build a canonical pairwise_ks mapping: (b1,b2) -> (stat_array, p_array)
-    pairwise_ks = {}
-    # If user already provided 'pairwise_ks' in desired format, accept it
-    if 'pairwise_ks' in ks_results:
-        # Expect values to be either dict{'statistic', 'p_value'} or tuple (stat, p)
-        raw = ks_results['pairwise_ks']
-        if not isinstance(raw, dict):
-            raise ValueError("'pairwise_ks' must be a dict mapping pairs to results.")
-        for pair, val in raw.items():
-            if isinstance(val, dict) and 'statistic' in val and 'p_value' in val:
-                pairwise_ks[pair] = (np.asarray(val['statistic']), np.asarray(val['p_value']))
-            elif isinstance(val, (list, tuple)) and len(val) == 2:
-                pairwise_ks[pair] = (np.asarray(val[0]), np.asarray(val[1]))
-            else:
-                raise ValueError("Each entry in 'pairwise_ks' must be dict{'statistic','p_value'} or (stat,p).")
-    else:
-        # Build from tuple keys like (b,'overall') and (b1,b2)
-        for k, v in ks_results.items():
-            if isinstance(k, tuple) and len(k) == 2 and k != ('feature_names',):
-                # Expect v to be dict with 'statistic' and 'p_value'
-                if isinstance(v, dict) and 'statistic' in v and 'p_value' in v:
-                    pairwise_ks[k] = (np.asarray(v['statistic']), np.asarray(v['p_value']))
-                elif isinstance(v, (list, tuple)) and len(v) == 2:
-                    pairwise_ks[k] = (np.asarray(v[0]), np.asarray(v[1]))
-                # else ignore other keys (like 'feature_names')
-
-    # Now split into overall vs pairwise lists. We will summarize p-values by taking min across features.
-    overall_pairs = []
-    pairwise_pairs = []
-    for (b1, b2), (stat_arr, p_arr) in pairwise_ks.items():
-        # ensure p_arr is a 1D array of length n_features
-        p_arr = np.asarray(p_arr).ravel()
-        if b2 == 'overall' or b1 == 'overall':
-            # treat any pair involving 'overall' as overall comparison
-            overall_pairs.append(((b1, b2), stat_arr, p_arr))
-        else:
-            pairwise_pairs.append(((b1, b2), stat_arr, p_arr))
-
-    # Helper to extract representative p-value (here min across features)
-    def rep_p(p_array):
-        if p_array.size == 0:
-            return np.nan
-        return float(np.nanmin(p_array))
-
-    # Build arrays for plotting
-    # Overall
-    overall_labels = []
-    overall_pvals = []
-    for (b1, b2), stat_arr, p_arr in overall_pairs:
-        # label as batch name (the non-overall entry)
-        label = b1 if b2 == 'overall' else b2 if b1 == 'overall' else f"{b1} vs {b2}"
-        overall_labels.append(str(label))
-        overall_pvals.append(rep_p(p_arr))
-    overall_pvals = np.array(overall_pvals)
-
-    # Pairwise
-    pair_labels = []
-    pair_pvals = []
-    for (b1, b2), stat_arr, p_arr in pairwise_pairs:
-        pair_labels.append(f"{b1} vs {b2}")
-        pair_pvals.append(rep_p(p_arr))
-    pair_pvals = np.array(pair_pvals)
-
-    # Sorting (handle NaNs by placing them at end)
-    def sort_labels_and_vals(labels, vals):
-        if vals.size == 0:
-            return [], np.array([]), []
-        sort_idx = np.argsort(np.nan_to_num(vals, nan=np.inf))
-        sorted_vals = vals[sort_idx]
-        sorted_labels = [labels[i] for i in sort_idx]
-        return sorted_labels, sorted_vals, sort_idx
-
-    s_over_labels, s_over_vals, _ = sort_labels_and_vals(overall_labels, overall_pvals)
-    s_pair_labels, s_pair_vals, _ = sort_labels_and_vals(pair_labels, pair_pvals)
-
-    # Convert to -log10, handle zeros or extremely small numbers safely
-    def neglog10_safe(p_array):
-        p = np.asarray(p_array, dtype=float)
-        p = np.where(np.isfinite(p), p, np.nan)
-        # replace zeros with a small value so -log10 doesn't blow up
-        tiny = 1e-323  # smallest positive float > 0 for double
-        p = np.where(p <= 0, tiny, p)
-        return -np.log10(p)
-
-    x_over = neglog10_safe(s_over_vals)
-    x_pair = neglog10_safe(s_pair_vals)
-
-    # Create the figure with two side-by-side horizontal dot plots
-    fig = plt.figure(figsize=(14, 8))
-    gs = gridspec.GridSpec(1, 2, width_ratios=[1, 8], wspace=0.4)
-    # Left: overall
-    ax1 = fig.add_subplot(gs[0])
-    if len(s_over_labels) > 0:
-        y_over = np.arange(len(s_over_labels))
-        ax1.scatter(x_over, y_over)
-        ax1.set_yticks(y_over)
-        ax1.set_yticklabels(s_over_labels)
-        ax1.set_xlabel('-log10(p-value)')
-    else:
-        ax1.text(0.5, 0.5, "No 'batch vs overall' comparisons found", ha='center', va='center')
-    ax1.set_title('Batch vs Overall (min p across features)')
-
-    # thresholds lines (x positions)
-    thresh05 = -np.log10(0.05)
-    bonferroni_threshold = 0.05 / max(1, len(feature_names))
-    thresh_bon = -np.log10(bonferroni_threshold)
-    ax1.axvline(thresh05, color='r', linestyle='--', label='p=0.05')
-    ax1.axvline(thresh_bon, color='g', linestyle='--', label='Bonferroni')
-
-    # text for counts (count features across all overall pairs that are significant)
-    # We'll count fraction of pairs (by representative p) passing thresholds
-    if len(s_over_labels) > 0:
-        num_sig_05 = np.sum(s_over_vals < 0.05)
-        num_sig_bon = np.sum(s_over_vals < bonferroni_threshold)
-        ax1.text(0.5, 0.05, f'Significant (p<0.05): {num_sig_05}/{len(s_over_labels)}', transform=ax1.transAxes, color='r')
-        ax1.text(0.5, 0.0, f'Significant (Bonferroni): {num_sig_bon}/{len(s_over_labels)}', transform=ax1.transAxes, color='g')
-    ax1.grid(True)
-    ax1.legend()
-
-    # Right: pairwise
-    ax2 = fig.add_subplot(gs[1], sharey=ax1 if len(s_over_labels) == len(s_pair_labels) else None)
-    if len(s_pair_labels) > 0:
-        y_pair = np.arange(len(s_pair_labels))
-        ax2.scatter(x_pair, y_pair)
-        ax2.set_yticks(y_pair)
-        ax2.set_yticklabels(s_pair_labels)
-        ax2.set_xlabel('-log10(p-value)')
-    else:
-        ax2.text(0.5, 0.5, "No pairwise batch comparisons found", ha='center', va='center')
-    ax2.set_title('Pairwise Batch Comparisons (min p across features)')
-    ax2.axvline(thresh05, color='r', linestyle='--', label='p=0.05')
-    ax2.axvline(thresh_bon, color='g', linestyle='--', label='Bonferroni')
-    if len(s_pair_labels) > 0:
-        num_sig_05_pair = np.sum(s_pair_vals < 0.05)
-        num_sig_bon_pair = np.sum(s_pair_vals < bonferroni_threshold)
-        ax2.text(0.6, 0.05, f'Significant (p<0.05): {num_sig_05_pair}/{len(s_pair_labels)}', transform=ax2.transAxes, color='r')
-        ax2.text(0.6, 0.0, f'Significant (Bonferroni): {num_sig_bon_pair}/{len(s_pair_labels)}', transform=ax2.transAxes, color='g')
-    ax2.grid(True)
-    ax2.legend()
-
-    plt.tight_layout()
-    plt.show()
-    return fig
-
-"""----------------------------------------------------------------------------------------------------------------------------"""
 """---------------------------------------- Plotting functions for Mixed effects model ----------------------------------"""
 """----------------------------------------------------------------------------------------------------------------------------"""
-@rep_plot_wrapper
-def mixed_effect_model_plot(results: dict, feature_names: list):
-    """
-    Plot the output of the mixed effects model as ordered plots of the -log10 p-values for each feature.
-    Args:
-        results (dict): Output from MixedEffectsModel(...)
-        feature_names (list): List of feature names corresponding to the p-values.
-    Returns:
-        (fig, axes): The matplotlib Figure and dict of axes.
-    """
 
-# %%
+"""----------------------------------------------------------------------------------------------------------------------------"""
+"""---------------------------------------- Plotting functions for Two-sample Kolmogorov-Smirnov test ----------------------------------"""
+"""----------------------------------------------------------------------------------------------------------------------------"""
+
+def KS_plot(ks_results: dict,
+             feature_names: list = None,
+               rep = None,            # optional StatsReporter
+                 caption: Optional[str] = None,
+                   show: bool = False) -> plt.Figure:
+    """
+    Plot the output of the two sample KS test as ordered plots of the -log10 p-values for each feature.
+
+    Overall, returns two plots
+        - one plot showing the pairwise KS test results for each feature as a dot plot (ordered as -log10 p-value)
+        - One plot showing the batch vs whole dataset (excluding that batch), again as a dot plot ordered by -log10 p-value.
+
+    Args:
+        ks_results (dict): Output from TwoSampleKSTest(...)
+            ks_results: keys are tuples like (b, 'overall') or (b1, b2)
+        - each value is a dict with:
+            'statistic': np.array of D statistics (length n_features)
+            'p_value': np.array of p-values (nan where test not run)
+            'p_value_fdr': np.array of BH-corrected p-values (if do_fdr else None)
+            'n_group1': array of sample counts per feature for group1 (same across features but kept for completeness)
+            'n_group2': array of counts for group2
+            'summary': {'prop_significant': float, 'mean_D': float}
+    Returns:
+        figs (list): List of (caption, fig) tuples for each plot generated.
+
+    """
+    # ---- Validation ---- Structure of dictionary has batch vs over all and batch vs batch as keys
+
+    import numpy as np
+    import matplotlib.pyplot as plt
+    import matplotlib.gridspec as gridspec
+    from matplotlib.figure import Figure
+    from matplotlib.pyplot import gca    
+# plot batch vs overall on one plot and code with the legend:
+    fig= plt.figure(figsize=(12, 6))
+    figs = []
+    ax = gca()
+
+    for key in ks_results:
+        if len(key) == 2 and key[1] == 'overall':
+            b = key[0]
+            res = ks_results[key]
+            p_values = res['p_value']
+            if feature_names is not None and len(feature_names) != len(p_values):
+                raise ValueError("feature_names length must match number of features in ks_results.")
+            n_features = len(p_values)
+            indices = np.arange(n_features)
+            # sort by -log10 p-value
+            sorted_indices = np.argsort(-np.log10(p_values + 1e-10))  # add small value to avoid log(0)
+            sorted_pvals = p_values[sorted_indices]
+            sorted_features = feature_names[sorted_indices] if feature_names is not None else sorted_indices
+            ax.plot(indices, -np.log10(sorted_pvals + 1e-10), '*',label=f'Batch {b} vs Overall')
+    plt.xlabel("Features (ordered by -log10 p-value)")
+    plt.ylabel("-log10 p-value")
+    plt.title("KS Test: Batch vs Overall")
+    plt.grid(True)
+    plt.legend()
+    sig_threshold_05 = -np.log10(0.05 / n_features)
+    sig_threshold_01 = -np.log10(0.01 / n_features)
+    plt.axhline(y=sig_threshold_05, color='r', linestyle='-', label='Significance Threshold (0.05 Bonferroni)')
+    plt.axhline(y=sig_threshold_01, color='g', linestyle='-', label='Significance Threshold (0.01 Bonferroni)')
+    figs.append((caption or "KS Test: Batch vs Overall", fig))
+
+    # Repeat for batch vs batch on next figure:
+    fig2 = plt.figure(figsize=(12, 6))
+    ax2 = gca()
+    for key in ks_results:
+        if len(key) == 2 and key[1] != 'overall':
+            b = key[0]
+            res = ks_results[key]
+            p_values = res['p_value']
+            if feature_names is not None and len(feature_names) != len(p_values):
+                raise ValueError("feature_names length must match number of features in ks_results.")
+            n_features = len(p_values)
+            indices = np.arange(n_features)
+            # sort by -log10 p-value
+            sorted_indices = np.argsort(-np.log10(p_values + 1e-10))  # add small value to avoid log(0)
+            sorted_pvals = p_values[sorted_indices]
+            sorted_features = feature_names[sorted_indices] if feature_names is not None else sorted_indices
+            ax2.plot(indices, -np.log10(sorted_pvals + 1e-10),'.', label=f'Batch {b} vs Overall')
+    plt.xlabel("Features (ordered by -log10 p-value)")
+    plt.ylabel("-log10 p-value")
+    plt.title("KS Test: Batch vs Batch")
+    plt.grid(True)
+    # Add an line to the plot to indicate significant threshold at 0.05 and 0.01 (Bonferroni corrected and uncorrected)
+    sig_threshold_05 = -np.log10(0.05 / n_features)
+    sig_threshold_01 = -np.log10(0.01 / n_features)
+    plt.axhline(y=sig_threshold_05, color='r', linestyle='-', label='Significance Threshold (0.05 Bonferroni)')
+    plt.axhline(y=sig_threshold_01, color='g', linestyle='-', label='Significance Threshold (0.01 Bonferroni)')
+
+    plt.legend()
+    figs.append((caption or "KS Test: Batch vs Batch", fig2))
+
+    # Check if show is given, if so, display the plots
+    for caption_i, fig in figs:
+        if rep is not None:
+            rep.log_plot(fig, caption_i)
+            plt.close(fig)
+        else: figs.append((caption_i, fig))
+    if show:
+        for _, fig in figs:
+            fig.show()
+    return rep if rep is not None else figs
+
