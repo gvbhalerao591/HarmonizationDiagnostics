@@ -116,6 +116,11 @@ if st.button("Generate Cross-Sectional Report"):
         batch_labels = st.session_state["batch_labels"]
         covariate_data = st.session_state["covariate_data"]
         st.write("Generating Cross-Sectional Report...")
+        if np.unique(batch_labels).shape[0] > 3:
+            SaveArtifacts = False
+        else:
+            SaveArtifacts = True
+
         report = DiagnosticReport.CrossSectionalReport(data,
                                                         batch_labels,
                                                           covariate_data,
@@ -123,7 +128,7 @@ if st.button("Generate Cross-Sectional Report"):
                                                                 save_dir=".",
                                                                     save_data=False,
                                                                     report_name="Simulator_Report",
-                                                                        SaveArtifacts=False,
+                                                                        SaveArtifacts=SaveArtifacts,
                                                                         rep=None,
                                                                             show=False
                                                           )

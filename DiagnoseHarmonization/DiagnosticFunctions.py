@@ -22,8 +22,6 @@ from scipy.stats import pearsonr
     - Variance_Ratios: Calculate variance ratios between batches for each feature.
     - KS_Test: Performs two-sample Kolmogorov-Smirnov test between batches for each feature.
 
-
-
 """
 
 def fit_lmm_safe(df, formula_fixed, group_col='batch', reml=False,
@@ -848,7 +846,7 @@ def Levene_Test(data, batch, centre = 'median'):
     return levene_results
 
 # Function to fit LMM safely with fallbacksdef fit_lmm_safe(df, formula_fixed, group_col, min_group_n=2, var_threshold=1e-8):
-def Run_LMM(Data, batch, covariates=None, feature_names=None, group_col_name='batch',
+def Run_LMM_cross_sectional(Data, batch, covariates=None, feature_names=None, group_col_name='batch',
                   covariate_names=None, min_group_n=2, var_threshold=1e-8):
     """
     Runs LMM diagnostics for each feature and returns (results_df, summary).
@@ -925,6 +923,88 @@ def Run_LMM(Data, batch, covariates=None, feature_names=None, group_col_name='ba
     summary['n_features'] = p
     return results_df, summary
 
+
+def Run_LMM_Longitudinal(Data, subject_ids, batch, covariates=None, feature_names=None,
+                  subject_col_name='subject', batch_col_name='batch',
+                  covariate_names=None, min_group_n=2, var_threshold=1e-8):
+    """Runs LMM diagnostics, treating subject as random effect, batch and covariates as fixed effects
+        Uses the LMM safe function for the fall backs and returns (results_df, summary).
+
+    Args:
+        Data: (n_samples, n_features) numpy array
+        subject_ids: array-like of length n_samples with subject IDs
+        batch: array-like of length n_samples with batch labels
+        covariates: optional (n_samples, n_covariates) array-like
+        feature_names: optional list of feature names
+        subject_col_name: str, name for subject ID column in model
+        batch_col_name: str, name for batch column in model
+        covariate_names: optional list of covariate names
+        min_group_n: minimum samples per group to fit LMM
+        var_threshold: variance threshold to consider a variance component as non-zero
+
+    
+    """
+    Data = np.asarray(Data, dtype=float)
+    n, p = Data.shape
+    if feature_names is None:
+        feature_names = [f'feature_{i+1}' for i in range(p)]
+    if len(feature_names) != p:
+        raise ValueError("feature_names length mismatch.")
+
+    # Build base DataFrame for model inputs, use same structure as cross sectional but include batch as fixed effect and subject as random effect
+    df_base = pd.DataFrame({subject_col_name: np.asarray(subject_ids),
+                            batch_col_name: np.asarray(batch)})
+    if covariates is not None:
+        if isinstance(covariates, pd.DataFrame):
+            cov_df = covariates.reset_index(drop=True)
+        else:
+            cov_arr = np.asarray(covariates)
+            if cov_arr.ndim == 1:
+                cov_df = pd.DataFrame({covariate_names[0] if covariate_names else 'cov1': cov_arr})
+            else:
+                names = covariate_names if covariate_names else [f'cov{i+1}' for i in range(cov_arr.shape[1])]
+                cov_df = pd.DataFrame(cov_arr, columns=names)
+        df_base = pd.concat([df_base, cov_df], axis=1)
+    
+    # build formula (fixed part)
+    fixed_terms = [batch_col_name]
+    if covariates is not None and cov_df.shape[1] > 0:
+        fixed_terms.extend(list(cov_df.columns))
+    rhs = ' + '.join(fixed_terms)
+    formula_fixed = f"y ~ {rhs}" # Here, y is column and rhs contains the fixed effects
+    rows = []
+    notes_counter = Counter()
+    for fi in range(p):
+        df = df_base.copy()
+        df['y'] = Data[:, fi]
+        res = fit_lmm_safe(df, formula_fixed, group_col=subject_col_name,
+                           min_group_n=min_group_n, var_threshold=var_threshold)
+        stats = res.get('stats', {})
+        notes = res.get('notes', []) or []
+        # ensure consistent fields
+        row = {
+            'feature': feature_names[fi],
+            'success': bool(res.get('success', False)), # did LMM fit succeed?
+            'var_fixed': stats.get('var_fixed', np.nan), # Variance explained by fixed effects
+            'var_subject': stats.get('var_batch', np.nan), # Variance explained by subject random effect
+            'var_resid': stats.get('var_resid', np.nan), # Residual variance
+            'R2_marginal': stats.get('R2_marginal', np.nan), # Marginal R-squared (fixed effects)
+            'R2_conditional': stats.get('R2_conditional', np.nan), # Conditional R-squared (fixed + random effects)
+            'ICC': stats.get('ICC', np.nan), # Intraclass correlation coefficient (subject variance / total variance)
+            'LR_stat': stats.get('LR_stat', np.nan),
+            'pval_LRT_random': stats.get('pval_LRT_random', np.nan),
+            'notes': ';'.join(notes)
+        }
+        rows.append(row)
+        for ntag in notes:
+            notes_counter[ntag] += 1
+        # also tag success vs fallback: Same overall logic as cross-sectional, change what is fixed and what is random
+        notes_counter['succeeded_LMM' if res.get('success', False) else 'used_fallback'] += 1
+    results_df = pd.DataFrame(rows)
+    summary = dict(notes_counter)
+    summary['num_features_analyzed'] = p
+    
+    return results_df, summary
 """
 ------------------ CLI Help Only Setup ------------------
  Help functions are set up to provide descriptions of the available functions without executing them.

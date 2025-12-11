@@ -28,12 +28,26 @@ def CrossSectionalReport(
     """
     Create a diagnostic report for dataset differences across batches.
 
-    Notes:
-      - If `rep` is provided, it will be used as-is (we will set report.save_dir/report.report_name
-        if you pass save_dir/report_name). If `rep` is None, a new StatsReporter is created and
-        used as a context manager (so it will be closed automatically).
-    """
+    Args:
+        data (np.ndarray): Data matrix (samples x features).
+        batch (list or np.ndarray): Batch labels for each sample.
+        covariates (np.ndarray, optional): Covariate matrix (samples x covariates).
+        covariate_names (list of str, optional): Names of covariates.
+        save_data (bool, optional): Whether to save input data and results.
+        save_data_name (str, optional): Filename for saved data.
+        save_dir (str or os.PathLike, optional): Directory to save report and data.
+        report_name (str, optional): Name of the report file.
+        SaveArtifacts (bool, optional): Whether to save intermediate artifacts.
+        rep (StatsReporter, optional): Existing report object to use.
+        power_analysis (bool, optional): Whether to perform power analysis.
+        show (bool, optional): Whether to display plots interactively.
+    
+    Returns:
+        HTML report saved to specified directory (or cd by default).
+        dict or None: If save_data is True, returns a dictionary of saved data arrays.
 
+    """
+    
     # Check inputs and revert to defaults as needed
     if save_dir is None:
         save_dir = Path.cwd()
@@ -42,7 +56,7 @@ def CrossSectionalReport(
     save_dir.mkdir(parents=True, exist_ok=True)
 
     if report_name is None:
-        base_name = "DiagnosticReport.html"
+        base_name = "CrossSectionalReport.html"
     else:
         base_name = report_name if report_name.endswith(".html") else report_name + ".html"
 
@@ -72,11 +86,11 @@ def CrossSectionalReport(
 
     # If we're using our own, enter the context manager
     if created_local_report:
-        ctx = report_ctx.__enter__()  # type: ignore
+        ctx = report_ctx.__enter__()
         report = ctx
     else:
         report = report_ctx
-
+    # Report begins here within try block: ***NOTE: may change in the future to run main code outside try/finally if needed***
     try:
         logger = report.logger
 
@@ -143,8 +157,8 @@ def CrossSectionalReport(
 
         logger.info("Generating Z-score normalization visualization")
         report.text_simple("Z-score normalization (median-centred) visualization across batches, " \
-        "the further the histograms are apart, the larger the mean batch differences on average across features." \
-        "We show also here a heatmap sorted by batch for further visualisation of batch effects, " \
+        "the further the histograms are apart, the larger the mean batch differences on average across features." )
+        report.text_simple("We show also here a heatmap sorted by batch for further visualisation of batch effects, " \
         "larger blocks of similar colours that are far from zero indicate larger batch effects compared to average across batches ")
         zscored_data = DiagnosticFunctions.z_score(data)
         PlotDiagnosticResults.Z_Score_Plot(zscored_data, batch, rep=report)
@@ -217,7 +231,7 @@ def CrossSectionalReport(
         report.text_simple("Fitting per-feature LMMs (random intercept for batch). Where LMM fails or batch variance is zero we fallback to OLS fixed-effects.")
 
         # run LMM diagnostics
-        lmm_results_df, lmm_summary = DiagnosticFunctions.Run_LMM(data, batch, covariates=covariates,
+        lmm_results_df, lmm_summary = DiagnosticFunctions.Run_LMM_cross_sectional(data, batch, covariates=covariates,
                                                 feature_names=None,
                                                 covariate_names=covariate_names,
                                                 min_group_n=2)
@@ -291,8 +305,6 @@ def CrossSectionalReport(
             plt.legend()
             report.log_plot(plt, caption="Marginal and Conditional R² values per feature")
             plt.close()
-
-        # ---------------------
 
         # ---------------------
         # Multiplicative tests
@@ -489,6 +501,173 @@ def CrossSectionalReport(
     finally:
         # If we created the local report context, close it properly
         if created_local_report:
+            # call __exit__ on the context-managed report
+            report_ctx.__exit__(None, None, None)  
+
+
+def LongitudinalReport(data, batch, subject_ids, covariates=None,
+                       covariate_names=None,
+                       save_data: bool = False,
+                       save_data_name: str | None = None,
+                       save_dir: str | os.PathLike | None = None,
+                       report_name: str | None = None,
+                       SaveArtifacts: bool = False,
+                       rep= None,
+                       show: bool = False,
+                       timestamped_reports: bool = True):
+    """
+    Create a diagnostic report for dataset differences across batches in longitudinal data.
+
+    Args: 
+        data (np.ndarray): Data matrix (samples x features).
+        batch (list or np.ndarray): Batch labels for each sample.
+        subject_ids (list or np.ndarray): Subject IDs for each sample.
+        covariates (np.ndarray, optional): Covariate matrix (samples x covariates).
+        covariate_names (list of str, optional): Names of covariates.
+        save_data (bool, optional): Whether to save input data and results.
+        save_data_name (str, optional): Filename for saved data.
+        save_dir (str or os.PathLike, optional): Directory to save report and data.
+        report_name (str, optional): Name of the report file.
+        SaveArtifacts (bool, optional): Whether to save intermediate artifacts.
+        rep (StatsReporter, optional): Existing report object to use.
+        show (bool, optional): Whether to display plots interactively.
+    
+    Outputs:
+        Generates an HTML report with diagnostic plots and statistics for longitudinal data.
+        If `save_data` is True, also returns a dictionary and csv with input data and results.
+        If SaveArtifacts is True, saves intermediate plots to `save_dir`.
+    
+    """
+
+    # Check inputs and revert to defaults as needed 
+
+    # Check inputs and revert to defaults as needed
+    if save_dir is None:
+        save_dir = Path.cwd()
+    else:
+        save_dir = Path(save_dir)
+    save_dir.mkdir(parents=True, exist_ok=True)
+
+    if report_name is None:
+        base_name = "LongitudinalReport.html"
+    else:
+        base_name = report_name if report_name.endswith(".html") else report_name + ".html"
+
+    if timestamped_reports:
+        stem, ext = base_name.rsplit(".", 1)
+        timestamp_str = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        base_name = f"{stem}_{timestamp_str}.html"
+
+    # Helper to configure a report object
+    def _configure_report(report_obj):
+        report_obj.save_dir = save_dir
+        report_obj.report_name = base_name
+        # write an initial report (optional) and log the path
+        rp = report_obj.write_report()  # writes to report_obj.report_path
+        report_obj.log_text(f"Initialized HTML report at: {rp}")
+        print(f"Report will be saved to: {rp}")
+        return report_obj
+
+    # If user passed a report object, use it (do not close it here).
+    # Otherwise create one and use it as a context manager so it's closed on exit.
+    created_local_report = False
+    if rep is None:
+        created_local_report = True
+        report_ctx = StatsReporter(save_artifacts=SaveArtifacts, save_dir=None)
+    else:
+        report_ctx = rep
+
+    # If we're using our own, enter the context manager
+    if created_local_report:
+        ctx = report_ctx.__enter__()  # type: ignore
+        report = ctx
+    else:
+        report = report_ctx
+        # Report begins here within try block: ***NOTE: may change in the future to run main code outside try/finally if needed***
+    try:
+        logger = report.logger
+
+        # configure save dir/name and write initial stub report
+        _configure_report(report)
+
+        line_break_in_text = "-" * 125
+        unique_subjects = set(subject_ids)
+        # Basic dataset summary
+        report.text_simple("Summary of dataset:")
+        report.text_simple(line_break_in_text)
+        report.log_text(
+            f"Analysis started\n"
+            f"Number of measures: {data.shape[0]}\n"
+            f"Unique subjects: {len(set(subject_ids))}\n"
+            f"Number of features: {data.shape[1]}\n"
+            f"Unique batches: {set(batch)}\n"
+            f"Unique Covariates: {set(covariate_names) if covariate_names is not None else set()}\n"
+            f"HTML report: {report.report_path}\n"
+        )
+        report.text_simple(line_break_in_text)
+
+        # Ensure batch is numeric array where needed
+        logger.info("Checking data format")
+        if isinstance(batch, (list, np.ndarray)):
+            batch = np.array(batch)
+            if batch.dtype.kind in {"U", "S", "O"}:  # string/object categorical
+                logger.info(f"Original batch categories: {list(set(batch))}")
+                logger.info("Creating numeric codes for batch categories")
+                batch_numeric, unique = pd.factorize(batch)
+                logger.info(f"Numeric batch codes: {list(set(batch_numeric))}")
+                # keep string labels in `batch` if plotting expects them; numeric conversions can be used inside tests as needed
+        else:
+            raise ValueError("Batch must be a list or numpy array")
+        # Prepare save-data dict if requested
+        if save_data:
+            data_dict = {}
+            data_dict["batch"] = batch
+            if covariates is not None:
+                for i in range(covariates.shape[1]):
+                    if covariate_names is not None and i < len(covariate_names):
+                        cov_name = covariate_names[i]
+                    else:
+                        cov_name = f"covariate_{i+1}"
+                    data_dict[cov_name] = covariates[:, i]
+            if save_data_name is None:
+                save_data_name = "DiagnosticReport_InputData.csv"
+        else:
+            data_dict = None
+        # Check batch, subject_ids, and data dimensions
+        if not (len(batch) == len(subject_ids) == data.shape[0]):
+            raise ValueError("Length of batch and subject_ids must match number of samples in data")
+        if len(covariates) is not None and len(covariates) != data.shape[0]:
+            raise ValueError("Number of rows in covariates must match number of samples in data")
+        if len(covariate_names) is not None and len(covariate_names) != covariates.shape[1]:
+            raise ValueError("Length of covariate_names must match number of columns in covariates")
+        
+
+
+    finally:
+        # If we created the local report context, close it properly
+        if created_local_report:
             # call __exit__ on the context-managed report (no exception info)
             report_ctx.__exit__(None, None, None)  # type: ignore
+        
+        ###----THE ABOVE IS COPIED FROM CROSS-SECTIONAL AS SETUP (review as needed)----###
+        # Begin reporring and diagnostics for longitudinal data within the try block
 
+    # Begin by giving description of longitudinal data and challenges then give overview of the tests to be performed:
+
+    report.log_section("Introduction", "Longitudinal Data Diagnostic Report Introduction")
+    report.text_simple(
+        "This report provides diagnostic analyses for longitudinal data collected across multiple batches. "
+        "Longitudinal data involves repeated measurements from the same subjects over time, which introduces "
+        "additional considerations for batch effects and variability. "
+        "The following diagnostics will be performed:\n"
+        "Mixed effects model with a subject-specific random term to show the additive effect,\n" \
+        " A batch-wise variance comparison for the scaling effect,\n" \
+        " Within-subject variability (coefficient of variation, percentage difference),\n" \
+        " Subject order consistency across subjects and batches (Spearman correlation),\n" \
+        " Cross-subject variability and preservation of biological effects (e.g., age, diagnosis, etc.). "
+    )
+        
+    
+    raise NotImplementedError("LongitudinalReport is not yet implemented.")
+
+    
