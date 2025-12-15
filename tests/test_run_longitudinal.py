@@ -12,9 +12,9 @@ import pandas as pd
 from scipy.stats import rankdata
 from typing import Sequence, Optional
 
-from DiagnosticFunctions import evaluate_pairwise_spearman
-from PlotDiagnosticResults import plot_pairwise_spearman_combined
-from DiagnosticReport import LongitudinalReport
+from DiagnoseHarmonization import DiagnosticReport
+from DiagnoseHarmonization import DiagnosticFunctions
+from DiagnoseHarmonization import PlotDiagnosticResults
 
 # fake data
 subjects = ["S1","S2","S3","S1","S2","S3","S1","S2","S3"]
@@ -36,7 +36,7 @@ idp_matrix = np.array([
 
 idp_names = ["IDP_A", "IDP_B"]
 
-results = evaluate_pairwise_spearman(
+results = DiagnosticFunctions.evaluate_pairwise_spearman(
     idp_matrix=idp_matrix,
     subjects=subjects,
     timepoints=timepoints,
@@ -50,7 +50,7 @@ print(results)
 ## PLOT
 all_results = [("subjectconsistency", {"pairwise_spearman": results})]   
 outdir      = os.getcwd() 
-figs = plot_pairwise_spearman_combined(all_results, outdir)
+figs = PlotDiagnosticResults.plot_pairwise_spearman_combined(all_results, outdir)
 # Save + close manually:
 for label, fig in figs:
     safe_name = "".join(c if (c.isalnum() or c in (' ', '-', '_')) else '_' for c in label).strip().replace(" ", "_")
@@ -58,13 +58,14 @@ for label, fig in figs:
     plt.close(fig)
 
 # Failed run
-LongitudinalReport(data=idp_matrix, 
+
+DiagnosticReport.LongitudinalReport(data=idp_matrix, 
                    batch=batch, 
                    subject_ids=subjects, 
                    timepoints=timepoints, 
                    features=idp_names, 
                    covariates=age,
-                   covariate_names="age",
+                   covariate_names=["age"],
                    save_data=None,
                    save_dir=None,
                    report_name=None,
@@ -73,3 +74,5 @@ LongitudinalReport(data=idp_matrix,
                    show=False,
                    timestamped_reports=True
                    )   
+
+print("Success!")

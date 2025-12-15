@@ -6,12 +6,9 @@ from pathlib import Path
 from datetime import datetime
 import matplotlib.pyplot as plt
 
-import DiagnosticFunctions
-import PlotDiagnosticResults
-from LoggingTool import StatsReporter
-
-from DiagnosticFunctions import evaluate_pairwise_spearman
-from PlotDiagnosticResults import plot_pairwise_spearman_combined
+from DiagnoseHarmonization import DiagnosticFunctions
+from DiagnoseHarmonization import PlotDiagnosticResults
+from DiagnoseHarmonization.LoggingTool import StatsReporter
 
 def CrossSectionalReport(
     data,
@@ -622,6 +619,18 @@ def LongitudinalReport(data, batch, subject_ids, timepoints, features, covariate
                 # keep string labels in `batch` if plotting expects them; numeric conversions can be used inside tests as needed
         else:
             raise ValueError("Batch must be a list or numpy array")
+        
+        # Check that covariates are an array if provided (.shape[1] throwing error with a list), convert to array if needed
+        if covariates is not None:
+            if isinstance(covariates, list):
+                covariates = np.array(covariates)
+            elif not isinstance(covariates, np.ndarray):
+                raise ValueError("Covariates must be a numpy array or list if provided")
+        
+        # Check if there is only one covariate and convert to 2D array if that is the case (avoid shape issue in next call):
+        if covariates is not None and len(covariates.shape) == 1:
+            covariates = covariates.reshape(-1, 1)
+
         # Prepare save-data dict if requested
         if save_data:
             data_dict = {}
@@ -645,16 +654,33 @@ def LongitudinalReport(data, batch, subject_ids, timepoints, features, covariate
         if len(covariate_names) is not None and len(covariate_names) != covariates.shape[1]:
             raise ValueError("Length of covariate_names must match number of columns in covariates")
         
+
+        report.log_section("Introduction", "Longitudinal Data Diagnostic Report Introduction")
+        report.text_simple(
+            "This report provides diagnostic analyses for longitudinal data collected across multiple batches. "
+            "Longitudinal data involves repeated measurements from the same subjects over time, which introduces "
+            "additional considerations for batch effects and variability. "
+            "The following diagnostics will be performed:\n"
+            "Mixed effects model with a subject-specific random term to show the additive effect,\n" \
+            " A batch-wise variance comparison for the scaling effect,\n" \
+            " Within-subject variability (coefficient of variation, percentage difference),\n" \
+            " Subject order consistency across subjects and batches (Spearman correlation),\n" \
+            " Cross-subject variability and preservation of biological effects (e.g., age, diagnosis, etc.). "
+    )
+        report.log_section("subject_order_consistency", "Subject Order Consistency Analysis")
+        logger.info("PLACEHOLDER TO TEST SECTION CREATION AND PLOTTING!")
         # Subject order consistency
-        all_results = DiagnosticFunctions.evaluate_pairwise_spearman(
+        results = DiagnosticFunctions.evaluate_pairwise_spearman(
             idp_matrix=data,
             subjects=subject_ids,
             timepoints=timepoints,
             idp_names=features,
             nPerm=1000,
             seed=0,
-        )        
-        PlotDiagnosticResults.plot_pairwise_spearman_combined(all_results, os.getcwd(), rep=report)
+        )
+        all_results = [("subjectconsistency", {"pairwise_spearman": results})]    
+
+        PlotDiagnosticResults.plot_pairwise_spearman_combined(all_results, save_dir, rep=report)
         report.log_text("Subject order consistency plot added to report")
 
         # Finalize
@@ -666,26 +692,3 @@ def LongitudinalReport(data, batch, subject_ids, timepoints, features, covariate
         if created_local_report:
             # call __exit__ on the context-managed report (no exception info)
             report_ctx.__exit__(None, None, None)  # type: ignore
-        
-        ###----THE ABOVE IS COPIED FROM CROSS-SECTIONAL AS SETUP (review as needed)----###
-        # Begin reporring and diagnostics for longitudinal data within the try block
-
-    # Begin by giving description of longitudinal data and challenges then give overview of the tests to be performed:
-
-    report.log_section("Introduction", "Longitudinal Data Diagnostic Report Introduction")
-    report.text_simple(
-        "This report provides diagnostic analyses for longitudinal data collected across multiple batches. "
-        "Longitudinal data involves repeated measurements from the same subjects over time, which introduces "
-        "additional considerations for batch effects and variability. "
-        "The following diagnostics will be performed:\n"
-        "Mixed effects model with a subject-specific random term to show the additive effect,\n" \
-        " A batch-wise variance comparison for the scaling effect,\n" \
-        " Within-subject variability (coefficient of variation, percentage difference),\n" \
-        " Subject order consistency across subjects and batches (Spearman correlation),\n" \
-        " Cross-subject variability and preservation of biological effects (e.g., age, diagnosis, etc.). "
-    )
-        
-    
-    raise NotImplementedError("LongitudinalReport is not yet implemented.")
-
-    
