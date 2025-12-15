@@ -667,8 +667,28 @@ def LongitudinalReport(data, batch, subject_ids, timepoints, features, covariate
             " Subject order consistency across subjects and batches (Spearman correlation),\n" \
             " Cross-subject variability and preservation of biological effects (e.g., age, diagnosis, etc.). "
     )
-        
-    
-    raise NotImplementedError("LongitudinalReport is not yet implemented.")
+        report.log_section("subject_order_consistency", "Subject Order Consistency Analysis")
+        logger.info("PLACEHOLDER TO TEST SECTION CREATION AND PLOTTING!")
+        # Subject order consistency
+        results = DiagnosticFunctions.evaluate_pairwise_spearman(
+            idp_matrix=data,
+            subjects=subject_ids,
+            timepoints=timepoints,
+            idp_names=features,
+            nPerm=1000,
+            seed=0,
+        )
+        all_results = [("subjectconsistency", {"pairwise_spearman": results})]    
 
-    
+        PlotDiagnosticResults.plot_pairwise_spearman_combined(all_results, save_dir, rep=report)
+        report.log_text("Subject order consistency plot added to report")
+
+        # Finalize
+        logger.info("Diagnostic tests completed")
+        logger.info(f"Report saved to: {report.report_path}")
+
+    finally:
+        # If we created the local report context, close it properly
+        if created_local_report:
+            # call __exit__ on the context-managed report (no exception info)
+            report_ctx.__exit__(None, None, None)  # type: ignore
