@@ -615,6 +615,53 @@ def Variance_Ratios(data, batch, covariates=None):
         ratio_of_variance[(b1, b2)] = ratio
     return ratio_of_variance
 
+# Define a function to perform the Levene's test for variance differences between each unique batch pair
+def Levene_Test(data, batch, centre = 'median'):
+    # Define a function to perform the Levene's test for variance differences between each unique batch pair
+    """
+    Args: data
+    - data: subjects x features (np.ndarray)
+    - batch: subjects x 1 (np.ndarray), batch labels
+    - centre: str, optional, the center to use for the test, 'median' by default. See scipy.stats.levene for options.
+    Returns:
+        - levene_results: dictionary with Levene's test statistic and p-value for each pair of batches
+    Raises:
+        - ValueError: if Data is not a 2D array or batch is not a
+        1D array, or if the number of samples in Data and batch do not match
+    
+    """
+    import numpy as np
+    from scipy.stats import levene
+    from itertools import combinations
+    if not isinstance(data, np.ndarray) or data.ndim != 2:
+        raise ValueError("Data must be a 2D numpy array (samples x features).")
+    if not isinstance(batch, (list, np.ndarray)) or np.ndim(batch) !=1:
+        raise ValueError("batch must be a 1D list or numpy array.")
+    
+    if data.shape[0] != len(batch):
+        raise ValueError("Number of samples in Data must match length of batch")
+    batch = np.array(batch)
+    unique_batches = np.unique(batch)
+    if len(unique_batches) < 2:
+        raise ValueError("At least two unique batches are required to perform Levene's test.")
+    batch_data = {}
+    levene_results = {}
+    # Calculate variances for each feature in each batch
+    for b in unique_batches:
+        batch_data[b] = data[batch == b]
+    for b1, b2 in combinations(unique_batches, 2):
+        p_values = []
+        statistics = []
+        for feature_idx in range(data.shape[1]):
+            stat, p_value = levene(batch_data[b1][:, feature_idx], batch_data[b2][:, feature_idx], center=centre)
+            statistics.append(stat)
+            p_values.append(p_value)
+        levene_results[(b1, b2)] = {
+            'statistic': np.array(statistics),
+            'p_value': np.array(p_values)
+        }
+    return levene_results
+
 # Define a function to perform two-sample Kolmogorov-Smirnov test for distribution differences between
 # each unique batch pair and each batch with the overall distribution
 def KS_Test(data,
@@ -798,53 +845,6 @@ def KS_Test(data,
     }
     return ks_results
 
-# Define a function to perform the Levene's test for variance differences between each unique batch pair
-def Levene_Test(data, batch, centre = 'median'):
-    # Define a function to perform the Levene's test for variance differences between each unique batch pair
-    """
-    Args: data
-    - data: subjects x features (np.ndarray)
-    - batch: subjects x 1 (np.ndarray), batch labels
-    - centre: str, optional, the center to use for the test, 'median' by default. See scipy.stats.levene for options.
-    Returns:
-        - levene_results: dictionary with Levene's test statistic and p-value for each pair of batches
-    Raises:
-        - ValueError: if Data is not a 2D array or batch is not a
-        1D array, or if the number of samples in Data and batch do not match
-    
-    """
-    import numpy as np
-    from scipy.stats import levene
-    from itertools import combinations
-    if not isinstance(data, np.ndarray) or data.ndim != 2:
-        raise ValueError("Data must be a 2D numpy array (samples x features).")
-    if not isinstance(batch, (list, np.ndarray)) or np.ndim(batch) !=1:
-        raise ValueError("batch must be a 1D list or numpy array.")
-    
-    if data.shape[0] != len(batch):
-        raise ValueError("Number of samples in Data must match length of batch")
-    batch = np.array(batch)
-    unique_batches = np.unique(batch)
-    if len(unique_batches) < 2:
-        raise ValueError("At least two unique batches are required to perform Levene's test.")
-    batch_data = {}
-    levene_results = {}
-    # Calculate variances for each feature in each batch
-    for b in unique_batches:
-        batch_data[b] = data[batch == b]
-    for b1, b2 in combinations(unique_batches, 2):
-        p_values = []
-        statistics = []
-        for feature_idx in range(data.shape[1]):
-            stat, p_value = levene(batch_data[b1][:, feature_idx], batch_data[b2][:, feature_idx], center=centre)
-            statistics.append(stat)
-            p_values.append(p_value)
-        levene_results[(b1, b2)] = {
-            'statistic': np.array(statistics),
-            'p_value': np.array(p_values)
-        }
-    return levene_results
-
 # Function to fit LMM safely with fallbacksdef fit_lmm_safe(df, formula_fixed, group_col, min_group_n=2, var_threshold=1e-8):
 def Run_LMM_cross_sectional(Data, batch, covariates=None, feature_names=None, group_col_name='batch',
                   covariate_names=None, min_group_n=2, var_threshold=1e-8):
@@ -1003,7 +1003,7 @@ def Run_LMM_Longitudinal(Data, subject_ids, batch, covariates=None, feature_name
     results_df = pd.DataFrame(rows)
     summary = dict(notes_counter)
     summary['num_features_analyzed'] = p
-    
+
     return results_df, summary
 """
 ------------------ CLI Help Only Setup ------------------

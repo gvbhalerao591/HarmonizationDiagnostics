@@ -131,6 +131,3 @@ def test_full_pipeline_generates_report(tmp_path = save_dir):
     #%%
     covariate_cat = np.random.randint(0, 1, size=n_samples)    # categorical
     print( covariate_cat)
-
-
-

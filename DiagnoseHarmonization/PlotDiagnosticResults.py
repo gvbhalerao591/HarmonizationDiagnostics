@@ -185,7 +185,7 @@ def Z_Score_Plot(data, batch, probablity_distribution=False,draw_PDF=True):
             p = stats.norm.pdf(x, mu, std)
             ax1.plot(x, p, linewidth=2)
 
-    ax1.set_xlabel(plot_type)
+    ax1.set_xlabel("Z-scores of all unique measures")
     ax1.invert_xaxis()
     ax1.yaxis.tick_right()
     ax1.yaxis.set_label_position("right")
@@ -204,7 +204,7 @@ def Z_Score_Plot(data, batch, probablity_distribution=False,draw_PDF=True):
     fig.colorbar(im, ax=ax2, orientation='vertical', label='Z-score')
     figs = []
     figs.append(("Z-score histogram", fig))
-    figs.append(("Z-score heatmap", fig2))
+    #figs.append(("Z-score heatmap", fig2))
     return figs
 """----------------------------------------------------------------------------------------------------------------------------"""
 """---------------------------------------- Plotting functions for Cohens D results ----------------------------------"""
@@ -338,6 +338,27 @@ def variance_ratio_plot(variance_ratios:  np.ndarray, pair_labels: list,
                 plt.show()
 
     return None if rep is not None else figs
+
+def levenes_plot(
+    levenes_results: pd.DataFrame,
+    *,
+    rep = None,            # optional StatsReporter
+    caption: Optional[str] = None,
+    show: bool = False,
+    pair_labels: Optional[list] = None
+) -> plt.Figure:
+    """
+    Plots Levene's test results as a bar plot with significance markers.
+
+    Args:
+        levenes_results dict: pairlabels (batchwise), statistics, pvalues for each unique pair, statistic and pvalue are 1D arrays length of num_features"""
+    figs = []
+    return figs
+    
+
+
+
+
 """----------------------------------------------------------------------------------------------------------------------------"""
 """---------------------------------------- Plotting functions for PCA correlation results ----------------------------------"""
 """----------------------------------------------------------------------------------------------------------------------------"""

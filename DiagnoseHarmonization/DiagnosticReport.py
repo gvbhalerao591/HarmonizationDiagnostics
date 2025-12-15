@@ -666,7 +666,9 @@ def LongitudinalReport(data, batch, subject_ids, covariates=None,
         " Subject order consistency across subjects and batches (Spearman correlation),\n" \
         " Cross-subject variability and preservation of biological effects (e.g., age, diagnosis, etc.). "
     )
-        
+    
+    
+
     
     raise NotImplementedError("LongitudinalReport is not yet implemented.")
 
