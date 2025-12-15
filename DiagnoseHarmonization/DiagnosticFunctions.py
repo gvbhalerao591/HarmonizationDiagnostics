@@ -1006,6 +1006,213 @@ def Run_LMM_Longitudinal(Data, subject_ids, batch, covariates=None, feature_name
 
     return results_df, summary
 """
+"""
+###################################
+# FOR LONGITUDINAL DATA
+####################################
+
+import numpy as np
+import pandas as pd
+from scipy.stats import rankdata
+from typing import Sequence, Optional
+
+
+def _force_numeric_vector(series_like) -> np.ndarray:
+    """Convert input to 1D float numpy array; non-convertible -> np.nan."""
+    if isinstance(series_like, (pd.Series, pd.DataFrame)):
+        arr = series_like.to_numpy().ravel()
+    else:
+        arr = np.asarray(series_like).ravel()
+    try:
+        return arr.astype(float)
+    except Exception:
+        out = np.empty(arr.shape, dtype=float)
+        for i, v in enumerate(arr):
+            try:
+                out[i] = float(v)
+            except Exception:
+                out[i] = np.nan
+        return out
+
+
+def _pearson_corr_safe(x: np.ndarray, y: np.ndarray) -> float:
+    """
+    Safe Pearson correlation: returns np.nan for undefined cases
+    (length<2, mismatched lengths, zero variance, or too many NaNs).
+    """
+    x = np.asarray(x, dtype=float).ravel()
+    y = np.asarray(y, dtype=float).ravel()
+    if x.size != y.size or x.size < 2:
+        return np.nan
+    mask = ~(np.isnan(x) | np.isnan(y))
+    if mask.sum() < 2:
+        return np.nan
+    x = x[mask]; y = y[mask]
+    xm = x.mean(); ym = y.mean()
+    dx = x - xm; dy = y - ym
+    ssx = np.sum(dx * dx); ssy = np.sum(dy * dy)
+    if ssx == 0 or ssy == 0:
+        return np.nan
+    cov = np.sum(dx * dy)
+    return float(cov / np.sqrt(ssx * ssy))
+
+
+def evaluate_pairwise_spearman(
+    idp_matrix: np.ndarray,
+    subjects: Sequence,
+    timepoints: Sequence,
+    idp_names: Optional[Sequence[str]] = None,
+    nPerm: int = 10000,
+    seed: Optional[int] = None,
+) -> pd.DataFrame:
+    """
+    Array-first implementation of pairwise Spearman with permutation testing.
+
+    Parameters
+    ----------
+    idp_matrix : np.ndarray
+        2D array shaped (n_samples, n_idps). Rows correspond to samples/observations.
+    subjects : sequence
+        Length n_samples sequence of subject IDs (will be compared as strings).
+    timepoints : sequence
+        Length n_samples sequence of timepoint labels (will be compared as strings).
+    idp_names : sequence[str], optional
+        Length n_idps names for IDP columns. If None, defaults to idp_1..idp_m.
+    nPerm : int
+        Number of permutations for null distribution (must be >=1).
+    seed : Optional[int]
+        RNG seed or None for nondeterministic RNG.
+
+    Returns
+    -------
+    pd.DataFrame
+        Columns: ["TimeA","TimeB","IDP","nPairs","SpearmanRho","NullMeanRho","pValue"]
+    """
+    # Validate and normalize inputs
+    if not isinstance(idp_matrix, np.ndarray):
+        idp_matrix = np.asarray(idp_matrix, dtype=float)
+    if idp_matrix.ndim != 2:
+        raise ValueError("idp_matrix must be 2D (n_samples, n_idps).")
+    n_samples, n_idps = idp_matrix.shape
+
+    if len(subjects) != n_samples:
+        raise ValueError("Length of subjects must match number of rows in idp_matrix.")
+    if len(timepoints) != n_samples:
+        raise ValueError("Length of timepoints must match number of rows in idp_matrix.")
+
+    if idp_names is None:
+        idp_names = [f"idp_{i+1}" for i in range(n_idps)]
+    else:
+        idp_names = list(idp_names)
+        if len(idp_names) != n_idps:
+            raise ValueError("idp_names length must match idp_matrix.shape[1].")
+
+    if not isinstance(nPerm, int) or nPerm < 1:
+        raise ValueError("nPerm must be an integer >= 1.")
+
+    subjects_arr = np.asarray(subjects).astype(str)
+    timepoints_arr = np.asarray(timepoints).astype(str)
+
+    # Preserve order of first appearance for timepoints (matching original behavior)
+    tp_index = pd.Index(timepoints_arr)
+    tp_levels = tp_index.unique().tolist()
+    nTP = len(tp_levels)
+
+    rng = np.random.default_rng(seed)
+
+    rows = []
+    for ia in range(nTP - 1):
+        for ib in range(ia + 1, nTP):
+            tpA = tp_levels[ia]; tpB = tp_levels[ib]
+
+            idxA_all = np.nonzero(timepoints_arr == tpA)[0]
+            idxB_all = np.nonzero(timepoints_arr == tpB)[0]
+
+            if idxA_all.size == 0 or idxB_all.size == 0:
+                # no rows for one of the timepoints -> record zeros/nans
+                for idp in idp_names:
+                    rows.append({"TimeA": tpA, "TimeB": tpB, "IDP": idp,
+                                 "nPairs": 0, "SpearmanRho": np.nan,
+                                 "NullMeanRho": np.nan, "pValue": np.nan})
+                continue
+
+            Ta_subj = subjects_arr[idxA_all]
+            Tb_subj = subjects_arr[idxB_all]
+
+            # subjects in A that also appear in B
+            maskA = np.isin(Ta_subj, Tb_subj)
+            if not np.any(maskA):
+                for idp in idp_names:
+                    rows.append({"TimeA": tpA, "TimeB": tpB, "IDP": idp,
+                                 "nPairs": 0, "SpearmanRho": np.nan,
+                                 "NullMeanRho": np.nan, "pValue": np.nan})
+                continue
+
+            common_subj = Ta_subj[maskA]
+            idxA = idxA_all[np.nonzero(maskA)[0]]
+
+            # map first occurrence in Tb to global row indices
+            tb_index_map = {}
+            for i, val in enumerate(Tb_subj):
+                if val not in tb_index_map:
+                    tb_index_map[val] = idxB_all[i]
+            idxB = np.array([tb_index_map[s] for s in common_subj], dtype=int)
+
+            # iterate idps (columns)
+            for j, idp_name in enumerate(idp_names):
+                xa_raw = idp_matrix[idxA, j] if j < n_idps else np.array([], dtype=float)
+                yb_raw = idp_matrix[idxB, j] if j < n_idps else np.array([], dtype=float)
+
+                xa = _force_numeric_vector(xa_raw)
+                yb = _force_numeric_vector(yb_raw)
+
+                valid_mask = ~(np.isnan(xa) | np.isnan(yb))
+                xa = xa[valid_mask]; yb = yb[valid_mask]
+                nPairs = xa.size
+
+                if nPairs < 3:
+                    rows.append({"TimeA": tpA, "TimeB": tpB, "IDP": idp_name,
+                                 "nPairs": int(nPairs), "SpearmanRho": np.nan,
+                                 "NullMeanRho": np.nan, "pValue": np.nan})
+                    continue
+
+                xa_r = rankdata(xa, method="average")
+                yb_r = rankdata(yb, method="average")
+                obs_rho = _pearson_corr_safe(xa_r, yb_r)
+
+                # Online accumulation: sum of valid null rhos, count of valid nulls, count of |null| >= |obs|
+                sum_null = 0.0
+                valid_null_count = 0
+                count_ge = 0
+                abs_obs = None if np.isnan(obs_rho) else abs(obs_rho)
+
+                for _ in range(nPerm):
+                    perm_idx = rng.permutation(nPairs)
+                    null_rho = _pearson_corr_safe(xa_r, yb_r[perm_idx])
+                    if not np.isnan(null_rho):
+                        sum_null += null_rho
+                        valid_null_count += 1
+                        if abs_obs is not None and abs(null_rho) >= abs_obs:
+                            count_ge += 1
+
+                null_mean = float(sum_null / valid_null_count) if valid_null_count > 0 else np.nan
+                pval = float(count_ge / nPerm)
+
+                rows.append({
+                    "TimeA": tpA,
+                    "TimeB": tpB,
+                    "IDP": idp_name,
+                    "nPairs": int(nPairs),
+                    "SpearmanRho": float(obs_rho) if not np.isnan(obs_rho) else np.nan,
+                    "NullMeanRho": null_mean,
+                    "pValue": pval,
+                })
+
+    results = pd.DataFrame(rows, columns=["TimeA", "TimeB", "IDP", "nPairs", "SpearmanRho", "NullMeanRho", "pValue"])
+    return results
+
+"""
+
 ------------------ CLI Help Only Setup ------------------
  Help functions are set up to provide descriptions of the available functions without executing them.
 """
