@@ -6,9 +6,12 @@ from pathlib import Path
 from datetime import datetime
 import matplotlib.pyplot as plt
 
-from DiagnoseHarmonization import DiagnosticFunctions
-from DiagnoseHarmonization import PlotDiagnosticResults
-from DiagnoseHarmonization.LoggingTool import StatsReporter
+import DiagnosticFunctions
+import PlotDiagnosticResults
+from LoggingTool import StatsReporter
+
+from DiagnosticFunctions import evaluate_pairwise_spearman
+from PlotDiagnosticResults import plot_pairwise_spearman_combined
 
 def CrossSectionalReport(
     data,
@@ -505,7 +508,7 @@ def CrossSectionalReport(
             report_ctx.__exit__(None, None, None)  
 
 
-def LongitudinalReport(data, batch, subject_ids, covariates=None,
+def LongitudinalReport(data, batch, subject_ids, timepoints, features, covariates=None,
                        covariate_names=None,
                        save_data: bool = False,
                        save_data_name: str | None = None,
@@ -538,6 +541,7 @@ def LongitudinalReport(data, batch, subject_ids, covariates=None,
         If SaveArtifacts is True, saves intermediate plots to `save_dir`.
     
     """
+
 
     # Check inputs and revert to defaults as needed 
 
@@ -641,7 +645,21 @@ def LongitudinalReport(data, batch, subject_ids, covariates=None,
         if len(covariate_names) is not None and len(covariate_names) != covariates.shape[1]:
             raise ValueError("Length of covariate_names must match number of columns in covariates")
         
+        # Subject order consistency
+        all_results = DiagnosticFunctions.evaluate_pairwise_spearman(
+            idp_matrix=data,
+            subjects=subject_ids,
+            timepoints=timepoints,
+            idp_names=features,
+            nPerm=1000,
+            seed=0,
+        )        
+        PlotDiagnosticResults.plot_pairwise_spearman_combined(all_results, os.getcwd(), rep=report)
+        report.log_text("Subject order consistency plot added to report")
 
+        # Finalize
+        logger.info("Diagnostic tests completed")
+        logger.info(f"Report saved to: {report.report_path}")
 
     finally:
         # If we created the local report context, close it properly
