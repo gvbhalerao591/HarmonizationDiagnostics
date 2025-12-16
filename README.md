@@ -37,9 +37,9 @@ UnknownBatchReport()
 
 ## LoggingTool.py
 
-    Enhanced logging and HTML report generation for diagnostic reports.
-    Provides the StatsReporter class that allows logging text and plots, organizing them into sections, and writing a structured HTM report with a table of contents.
-    If individuals would like to use this library to create their own analysis scripts, we suggest using the logging tool as an easy way to organise and return results (see script for more detail)
+Enhanced logging and HTML report generation for diagnostic reports.
+Provides the StatsReporter class that allows logging text and plots, organizing them into sections, and writing a structured HTM report with a table of contents.
+If individuals would like to use this library to create their own analysis scripts, we suggest using the logging tool as an easy way to organise and return results (see script for more detail)
 
     Functions:
     - log_section(section_id, title): mark a new named section in the log 
@@ -48,8 +48,8 @@ UnknownBatchReport()
 
 ## DiagnosticFunctions.py
 
-    Definitions for each of the functions called by the different reporting tools in DiagnosticReport.py are written here.
-    Each function will show either the additive, multiplicative or distribution difference between batches. Additionally, covariate effects using Linear models (either mixed effects or if this cannot be fit, fixed effects through OLS)
+Definitions for each of the functions called by the different reporting tools in DiagnosticReport.py are written here.
+Each function will show either the additive, multiplicative or distribution difference between batches. Additionally, covariate effects using Linear models (either mixed effects or if this cannot be fit, fixed effects through OLS)
     
     Collection of statistical functions to assess and visualise batch effects in tabular data.
     Functions:
@@ -62,8 +62,8 @@ UnknownBatchReport()
 
 ## PlotDiagnosticResults.py
 
-    Complementary plotting functions for the functions in DiagnosticFunctions.py
-    Functions:
+Complementary plotting functions for the functions in DiagnosticFunctions.py
+Functions:
     - Z_Score_Plot: Plot histogram and heatmap of Z-scored data by batch.
     - Cohens_D_plot: Plot Cohen's d effect sizes with histograms.
     - variance_ratio_plot: Plot variance ratios between batches.
@@ -73,7 +73,7 @@ UnknownBatchReport()
 
 ## HarmonizationFunctions.py
 
-    Collection of widely used functions for applying harmonisation to tabular data:
+Collection of widely used functions for applying harmonisation to tabular data:
         HarmonizationFunctions.combat(data, batch, mod, parametric,
                     DeltaCorrection=True, UseEB=True, ReferenceBatch=None,
                     RegressCovariates=False, GammaCorrection=True)          
@@ -82,7 +82,7 @@ UnknownBatchReport()
                 dat: should be M x N (features by observations) array
                 Batch: N length array or list 
                 mod: N x C array where C is your number of covariates
-                parametric: Whether to set parametric to true or false (should be set to True, setting parametric to false results in longer run time and is unstable, may be fixed n future implementation)             
+                parametric: Whether to set parametric to true or false (should be set to True, setting parametric to false results in longer run time and is unstable, may be fixed in future implementations)             
             Optional: 
                 DeltaCorrection: Whether to apply scaling correction (default true)
                 UseEB: Use empirical Bayes to estimate location scale correctio (default true)
