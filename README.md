@@ -1,4 +1,4 @@
-# DiagnoseHarmonize version 0.0.1
+# DiagnoseHarmonize version 0.2.1
 
 DiagnoseHarmonize is an **In-development** library for the streamline application and assesment of harmonization algorithms at the summary measure level, as well as the establishment of a centralised location for popular existing harmonization methods that are well validated within the literature.
 We plan to show in an upcoming paper that the systematic evaluation of different components of the batch effect and subsequent reporting is not only beneficial for choosing a good harmonisation strategy, but essential for evaluating how well it has worked.
@@ -89,3 +89,13 @@ UnknownBatchReport()
                 ReferenceBatch: Set batch label in batch to be the reference, no L/S correction is applied to this batch and this batches mean and variance are used when estimating batch corrections
                 RegressCovariates: Should covariate effects estimated from mod be added back into data or data returned as residuals (default False)
                 GammaCorrection: Whether to apply mean shift correction (default true)
+
+## Simulator.py
+
+    Batch effect simulator that opens an interactive web-browser and allows the user to generate simulated datasets with varying numbers of unique batches,
+    severity of batch effects (additive and multiplicative) and different covariate effects. 
+
+    The user can then visualise the feature-wise difference in batches using histograms and box-plots, generate a cross-sectional diagnostic report to view the effects in more detail and       apply harmonisation (using ComBat). This allows the user to get a direct comparisson of the before/after of applying harmonisation by comparing the reports in a semi-realistic scenario.
+
+    To run the simulator, run **streamlit run simulator.py** in the terminal
+    
