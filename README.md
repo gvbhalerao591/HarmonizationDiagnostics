@@ -63,32 +63,33 @@ Each function will show either the additive, multiplicative or distribution diff
 ## PlotDiagnosticResults.py
 
 Complementary plotting functions for the functions in DiagnosticFunctions.py
-Functions:
-    - Z_Score_Plot: Plot histogram and heatmap of Z-scored data by batch.
-    - Cohens_D_plot: Plot Cohen's d effect sizes with histograms.
-    - variance_ratio_plot: Plot variance ratios between batches.
-    - PC_corr_plot: Generate PCA diagnostic plots including scatter plots and correlation heatmaps.
-    - PC_clustering_plot: K-means clustering and silhouette analysis of PCA results by batch.
-    - Ks_Plot: Plot KS statistic between batches.
+    Functions:
+        - Z_Score_Plot: Plot histogram and heatmap of Z-scored data by batch.
+        - Cohens_D_plot: Plot Cohen's d effect sizes with histograms.
+        - variance_ratio_plot: Plot variance ratios between batches.
+        - PC_corr_plot: Generate PCA diagnostic plots including scatter plots and correlation heatmaps.
+        - PC_clustering_plot: K-means clustering and silhouette analysis of PCA results by batch.
+        - Ks_Plot: Plot KS statistic between batches.
 
 ## HarmonizationFunctions.py
 
 Collection of widely used functions for applying harmonisation to tabular data:
-        HarmonizationFunctions.combat(data, batch, mod, parametric,
-                    DeltaCorrection=True, UseEB=True, ReferenceBatch=None,
-                    RegressCovariates=False, GammaCorrection=True)          
-            Apply combat harmonisation to your data:
-            Mandatory: 
-                dat: should be M x N (features by observations) array
-                Batch: N length array or list 
-                mod: N x C array where C is your number of covariates
-                parametric: Whether to set parametric to true or false (should be set to True, setting parametric to false results in longer run time and is unstable, may be fixed in future implementations)             
-            Optional: 
-                DeltaCorrection: Whether to apply scaling correction (default true)
-                UseEB: Use empirical Bayes to estimate location scale correctio (default true)
-                ReferenceBatch: Set batch label in batch to be the reference, no L/S correction is applied to this batch and this batches mean and variance are used when estimating batch corrections
-                RegressCovariates: Should covariate effects estimated from mod be added back into data or data returned as residuals (default False)
-                GammaCorrection: Whether to apply mean shift correction (default true)
+
+            HarmonizationFunctions.combat(data, batch, mod, parametric,
+                        DeltaCorrection=True, UseEB=True, ReferenceBatch=None,
+                        RegressCovariates=False, GammaCorrection=True)          
+                Apply combat harmonisation to your data:
+                Mandatory: 
+                    dat: should be M x N (features by observations) array
+                    Batch: N length array or list 
+                    mod: N x C array where C is your number of covariates
+                    parametric: Whether to set parametric to true or false (should be set to True, setting parametric to false results in longer run time and is unstable, may be fixed in     future implementations)             
+                Optional: 
+                    DeltaCorrection: Whether to apply scaling correction (default true)
+                    UseEB: Use empirical Bayes to estimate location scale correctio (default true)
+                    ReferenceBatch: Set batch label in batch to be the reference, no L/S correction is applied to this batch and this batches mean and variance are used when estimating        batch corrections
+                    RegressCovariates: Should covariate effects estimated from mod be added back into data or data returned as residuals (default False)
+                    GammaCorrection: Whether to apply mean shift correction (default true)
 
 ## Simulator.py
 
