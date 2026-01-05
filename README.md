@@ -32,8 +32,7 @@ CrossSectionalReport():
 LongitudinalReport()
     Additional vector of subject ID's required. Longitudinal harmonisation efficacy must have an aditional goal of ensuring that between subject variability is preserved or recovered through harmonisation. Assess additive, multiplicative and distributional component of batch assuming that batch effects all participants meaures the same for each observation (feature). Ensure consitency of subject ranking between sites (i.e if person A has larger ROI volume in sites A, B and C then person B, then person B's measures should be smaller at all sites than just A to A)
 
-UnknownBatchReport()
-    New methods have used image quality metrics to estimate technical differences between batches. These are continuous variables so quantifying severity is best done through modelling approaches rather than by using a grouping variable. This script is a Work In Progress and will be added at a later data
+We also plan to add a third function, UnknownBatchReport(), which would be applied to datasets where there aren't distinct batches, or cases where there are many batches each with small sample sizes (e.g < 20). This script would take image quality metrics (IQMs) for combination with new methods for harmonisation that don't use a batch label.
 
 ## LoggingTool.py
 
