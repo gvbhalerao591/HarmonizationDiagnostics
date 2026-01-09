@@ -1,24 +1,32 @@
 [build-system]
-requires = ["setuptools>=61.0"]
+requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "harmonization-diagnostics"
-version = "0.9.1"
-description = "Diagnostics and power analysis for harmonization efficacy"
-readme = "README.md"
+version = "0.1.0"
+description = "Diagnostics for pre- and post- Harmonisation"
+readme = { file = "README.md", content-type = "text/markdown" }
 requires-python = ">=3.10"
-license = { text = "MIT" }
+license = { file = "LICENSE" }
 
 authors = [
-  { name = "Jake Turnbull" }
+  { name = "Jacob Turnbull", email = "jacob.turnbull@ndcn.ox.ac.uk" },
+  { name = "Gaurav Bhalerao", email = "gaurv.bhalerao@ndcn.ox.ac.uk" },
 ]
 
+# Based on pip freeze and package imports as of 2026-01-09
 dependencies = [
-  "numpy>=1.23",
-  "pandas>=2.0",
-  "scipy>=1.10",
-  "matplotlib>=3.7"
+  "numpy>=2.3,<3.0",
+  "pandas>=2.3,<3.0",
+  "scipy>=1.16,<2.0",
+  "statsmodels>=0.14,<0.15",
+  "scikit-learn>=1.7,<2.0",
+  "matplotlib>=3.10,<4.0",
+  "seaborn>=0.13,<0.14",
+  "pyarrow>=21.0,<22.0",
+  "requests>=2.32,<3.0",
+  "streamlit>=1.51,<2.0"
 ]
 
 [project.optional-dependencies]
@@ -26,11 +34,31 @@ dev = [
   "pytest>=7.0",
   "pytest-cov",
   "black",
-  "flake8"
+  "flake8",
+  "build",
+  "twine",
+  "pip-tools",
+  "pipdeptree"
+]
+
+docs = [
+  "sphinx",
+  "sphinx-rtd-theme"
+]
+
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: OS Independent",
+  "Intended Audience :: Science/Research",
 ]
 
 [tool.setuptools.packages.find]
-include = ["DiagnoseHarmonization*"]
+where = ["."]
+include = ["harmonization_diagnostics*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+addopts = "-q --cov=harmonization_diagnostics"
+
