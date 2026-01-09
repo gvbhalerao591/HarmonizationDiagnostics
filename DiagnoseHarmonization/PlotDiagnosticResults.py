@@ -121,15 +121,15 @@ from collections.abc import Sequence
 
 
 """
-"""----------------------------------------------------------------------------------------------------------------------------"""
-"""---------------------------------------- Plotting functions for Cohens D results ----------------------------------"""
-"""----------------------------------------------------------------------------------------------------------------------------"""
+
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
 import numpy as np
 from typing import Optional
 import pandas as pd
-
+"""----------------------------------------------------------------------------------------------------------------------------"""
+"""---------------------------------------- Plotting functions for Z-score results ----------------------------------"""
+"""----------------------------------------------------------------------------------------------------------------------------"""
 @rep_plot_wrapper
 def Z_Score_Plot(data, batch, probablity_distribution=False,draw_PDF=True):
     """
@@ -185,7 +185,7 @@ def Z_Score_Plot(data, batch, probablity_distribution=False,draw_PDF=True):
             p = stats.norm.pdf(x, mu, std)
             ax1.plot(x, p, linewidth=2)
 
-    ax1.set_xlabel(plot_type)
+    ax1.set_xlabel("Z-scores of all unique measures")
     ax1.invert_xaxis()
     ax1.yaxis.tick_right()
     ax1.yaxis.set_label_position("right")
@@ -204,9 +204,11 @@ def Z_Score_Plot(data, batch, probablity_distribution=False,draw_PDF=True):
     fig.colorbar(im, ax=ax2, orientation='vertical', label='Z-score')
     figs = []
     figs.append(("Z-score histogram", fig))
-    figs.append(("Z-score heatmap", fig2))
+    #figs.append(("Z-score heatmap", fig2))
     return figs
-
+"""----------------------------------------------------------------------------------------------------------------------------"""
+"""---------------------------------------- Plotting functions for Cohens D results ----------------------------------"""
+"""----------------------------------------------------------------------------------------------------------------------------"""
 @rep_plot_wrapper
 def Cohens_D_plot(
     cohens_d: np.ndarray,
@@ -336,6 +338,27 @@ def variance_ratio_plot(variance_ratios:  np.ndarray, pair_labels: list,
                 plt.show()
 
     return None if rep is not None else figs
+
+def levenes_plot(
+    levenes_results: pd.DataFrame,
+    *,
+    rep = None,            # optional StatsReporter
+    caption: Optional[str] = None,
+    show: bool = False,
+    pair_labels: Optional[list] = None
+) -> plt.Figure:
+    """
+    Plots Levene's test results as a bar plot with significance markers.
+
+    Args:
+        levenes_results dict: pairlabels (batchwise), statistics, pvalues for each unique pair, statistic and pvalue are 1D arrays length of num_features"""
+    figs = []
+    return figs
+    
+
+
+
+
 """----------------------------------------------------------------------------------------------------------------------------"""
 """---------------------------------------- Plotting functions for PCA correlation results ----------------------------------"""
 """----------------------------------------------------------------------------------------------------------------------------"""
@@ -530,6 +553,9 @@ def PC_corr_plot(
                 pass
 
     return figs
+"""----------------------------------------------------------------------------------------------------------------------------"""
+"""---------------------------------------- Plotting functions for PCA clustering results ----------------------------------"""
+"""----------------------------------------------------------------------------------------------------------------------------"""
 @rep_plot_wrapper
 def pc_clustering_plot(
     PrincipleComponents,
@@ -714,7 +740,6 @@ def pc_clustering_plot(
                 pass
 
     return figs
-
 """----------------------------------------------------------------------------------------------------------------------------"""
 """---------------------------------------- Plotting functions for Mahalanobis distance ----------------------------------"""
 """----------------------------------------------------------------------------------------------------------------------------"""
@@ -895,15 +920,13 @@ def mahalanobis_distance_plot(results: dict,
     if show:
         plt.show()
     return fig, axes
-
 """----------------------------------------------------------------------------------------------------------------------------"""
 """---------------------------------------- Plotting functions for Mixed effects model ----------------------------------"""
 """----------------------------------------------------------------------------------------------------------------------------"""
-
+# @rep_plot_wrapper To be added at a later date (currently plotted in the report directly as we haven't decided on a standard plot format)
 """----------------------------------------------------------------------------------------------------------------------------"""
 """---------------------------------------- Plotting functions for Two-sample Kolmogorov-Smirnov test ----------------------------------"""
 """----------------------------------------------------------------------------------------------------------------------------"""
-
 def KS_plot(ks_results: dict,
              feature_names: list = None,
                rep = None,            # optional StatsReporter
@@ -1008,3 +1031,227 @@ def KS_plot(ks_results: dict,
             fig.show()
     return rep if rep is not None else figs
 
+##########################################################################
+# Plotting for longitudinal metrics
+###########################################################################
+import os, re, json, argparse
+from typing import List, Dict, Tuple, Any
+import numpy as np
+import pandas as pd
+import matplotlib as mpl
+import matplotlib.pyplot as plt
+from matplotlib import font_manager
+
+import numpy as np
+import pandas as pd
+from scipy.stats import rankdata
+from typing import Sequence, Optional
+from matplotlib.figure import Figure
+
+mpl.rcParams.update({
+    "font.family": "sans-serif",
+    "font.sans-serif": ["DejaVu Sans", "Helvetica", "Arial"],
+    "font.size": 10,
+    "axes.titlesize": 13,
+    "axes.labelsize": 11,
+})
+STAR = u"\u2605"
+_MARKERS = ["o","s","D","v","^","P","X","H","<",">","8","p","*"]
+
+INTERP_FS_DELTA = 2
+
+def ensure_dir(path: str):
+    os.makedirs(path, exist_ok=True)
+
+def tidy_axes(ax):
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+    ax.spines['left'].set_visible(True)
+    ax.spines['bottom'].set_visible(True)
+    ax.yaxis.set_ticks_position('left')
+    ax.xaxis.set_ticks_position('bottom')
+    # NEW — add grids
+    ax.grid(True, which='major', axis='both', linestyle='--', linewidth=0.6, color='#dddddd')
+    ax.set_axisbelow(True)
+
+
+def normalize_key(s: Any) -> str:
+    if s is None: return ""
+    s = str(s).strip().lower()
+    s = re.sub(r"\s+", "_", s)
+    s = re.sub(r"[^0-9a-z_]+", "_", s)
+    s = re.sub(r"_+", "_", s)
+    return s.strip("_")
+
+def _tone_hex(hexcolor: str, factor: float = 0.88) -> str:
+    hexcolor = hexcolor.lstrip("#")
+    r = int(hexcolor[0:2], 16); g = int(hexcolor[2:4], 16); b = int(hexcolor[4:6], 16)
+    r = max(0, min(255, int(r * factor)))
+    g = max(0, min(255, int(g * factor)))
+    b = max(0, min(255, int(b * factor)))
+    return f"#{r:02x}{g:02x}{b:02x}"
+
+class StyleBank:
+    """Deterministic style assignment for keys (idp/site/timepair)."""
+    def __init__(self):
+        self._map = {}
+        self._colors = plt.get_cmap("Accent").colors   # brighter palette
+        self._next = 0
+    def get(self, key: str) -> Dict[str,str]:
+        nk = normalize_key(key)
+        if nk in self._map:
+            return self._map[nk]
+        i = self._next
+        color = mpl.colors.to_hex(self._colors[i % len(self._colors)])  # no darkening
+        color = _tone_hex(color, 0.86)
+        marker = _MARKERS[i % len(_MARKERS)]
+        self._map[nk] = {"color": color, "marker": marker, "label": key}
+        self._next += 1
+        return self._map[nk]
+    def items(self):
+        return list(self._map.items())
+
+def _style_fetch(stylebank, key, default):
+    """
+    Safe access for stylebank entries. Handles:
+      - dict-like .get(k, default)
+      - custom .get(k) (no default) returning None if missing
+      - __getitem__ access stylebank[k]
+    Always returns either the found value or `default`.
+    """
+    # If None provided, just return default
+    if stylebank is None:
+        return default
+    # If it's an actual dict, use its get with default
+    if isinstance(stylebank, dict):
+        return stylebank.get(key, default)
+    # Try calling get(key, default) (works for dict-like)
+    try:
+        return stylebank.get(key, default)
+    except TypeError:
+        # get exists but does not accept default: try get(key)
+        try:
+            val = stylebank.get(key)
+            return default if val is None else val
+        except Exception:
+            pass
+    except AttributeError:
+        # no get method; try item access
+        pass
+
+    # Try dictionary-style access
+    try:
+        return stylebank[key]
+    except Exception:
+        # give up: return default
+        return default
+
+@rep_plot_wrapper  # uses the wrapper 
+def plot_pairwise_spearman_combined(all_results, outdir) -> List[Tuple[str, Figure]]:
+    """
+    Build two summary plots and return them as [(label, Figure), ...].
+    The wrapper will log & close figs if called with rep=... or log_func=...
+    """
+    stylebank = StyleBank()
+    labels           = [lab for lab, _ in all_results]
+    per_dir_idp_avgs = []; per_dir_tp_avgs = []; idps = []; tps = []
+
+    for lab, dct in all_results:
+        df = dct.get("pairwise_spearman", pd.DataFrame())
+        if df is None or df.empty:
+            per_dir_idp_avgs.append({}); per_dir_tp_avgs.append({}); continue
+        if not set(['TimeA','TimeB','IDP','SpearmanRho']).issubset(df.columns):
+            per_dir_idp_avgs.append({}); per_dir_tp_avgs.append({}); continue
+        idp_avg = df.groupby('IDP')['SpearmanRho'].mean().to_dict()
+        per_dir_idp_avgs.append(idp_avg); idps.extend(list(idp_avg.keys()))
+        tp = df.groupby(['TimeA','TimeB'])['SpearmanRho'].mean()
+        tp_idx = ['%s|%s' % (a,b) for (a,b) in tp.index.tolist()]
+        per_dir_tp_avgs.append(dict(zip(tp_idx, tp.values.tolist()))); tps.extend(tp_idx)
+    
+    idps = list(dict.fromkeys(idps)); tps = list(dict.fromkeys(tps))
+
+    figs: List[Tuple[str, Figure]] = []
+
+    # -------------------------
+    # IDP average boxplot + scatter
+    # -------------------------
+    boxdata = [[per_dir_idp_avgs[i].get(idp, np.nan) for idp in idps] for i in range(len(per_dir_idp_avgs))]
+    fig1, ax1 = plt.subplots(figsize=(max(8,1.2*len(labels)),6)); tidy_axes(ax1)
+    ax1.boxplot([ [v for v in arr if not np.isnan(v)] for arr in boxdata],
+                positions=np.arange(1,len(labels)+1), widths=0.6, patch_artist=True,
+                boxprops=dict(facecolor='none'))
+        # scatter each idp
+    for i, d in enumerate(per_dir_idp_avgs):
+        for idp in idps:
+            val = d.get(idp, np.nan)
+            if np.isnan(val): 
+                continue
+            st = _style_fetch(stylebank, idp, {'marker':'o','color':'#1f77b4'})
+            ax1.scatter(i+1 + np.random.uniform(-0.08,0.08), val,
+                        marker=st.get('marker','o'), color=st.get('color','#1f77b4'),
+                        edgecolor=_tone_hex(st.get('color','#1f77b4'),0.6), s=60)
+
+    # IDP legend (build handles safely)
+    if len(idps) > 0 and len(idps) <= 40:
+        handles = []
+        for idp in idps:
+            st = _style_fetch(stylebank, idp, {'marker':'o','color':'#1f77b4'})
+            h = plt.Line2D([], [], marker=st.get('marker','o'),
+                        color=st.get('color','#1f77b4'),
+                        linestyle='None', markersize=8,
+                        markeredgecolor=_tone_hex(st.get('color','#1f77b4'),0.6))
+            handles.append(h)
+        ax1.legend(handles, idps, bbox_to_anchor=(1.02,0.5), loc='center left', fontsize=8, title='IDP', frameon=True)
+        fig1.subplots_adjust(right=0.72)
+
+    fig1.subplots_adjust(bottom=0.26)
+    fig1.text(0.5, 0.02,
+              "Interpretation: Higher values indicate better preservation of subject order",
+              ha='center', fontsize=max(8,mpl.rcParams.get("font.size",10)-INTERP_FS_DELTA),
+              color='blue', style='italic')
+
+    figs.append(("pairwise_spearman_idpavg_combined", fig1))
+     
+    # -------------------------
+    # Timepair average boxplot + scatter
+    # -------------------------
+    boxdata_tp = [[per_dir_tp_avgs[i].get(tp, np.nan) for tp in tps] for i in range(len(per_dir_tp_avgs))]
+    fig2, ax2 = plt.subplots(figsize=(max(8,1.2*len(labels)),6)); tidy_axes(ax2)
+    ax2.boxplot([ [v for v in arr if not np.isnan(v)] for arr in boxdata_tp],
+                positions=np.arange(1,len(labels)+1), widths=0.6, patch_artist=True,
+                boxprops=dict(facecolor='none'))
+
+    # scatter per timepair
+    for i, d in enumerate(per_dir_tp_avgs):
+        for tp in tps:
+            val = d.get(tp, np.nan)
+            if np.isnan(val): 
+                continue
+            st = _style_fetch(stylebank, tp, {'marker':'o','color':'#1f77b4'})
+            ax2.scatter(i+1 + np.random.uniform(-0.08,0.08), val,
+                        marker=st.get('marker','o'), color=st.get('color','#1f77b4'),
+                        edgecolor=_tone_hex(st.get('color','#1f77b4'),0.6), s=60)
+
+    # Timepair legend
+    if len(tps) > 0 and len(tps) <= 40:
+        handles = []
+        for tp in tps:
+            st = _style_fetch(stylebank, tp, {'marker':'o','color':'#1f77b4'})
+            h = plt.Line2D([], [], marker=st.get('marker','o'),
+                        color=st.get('color','#1f77b4'),
+                        linestyle='None', markersize=8,
+                        markeredgecolor=_tone_hex(st.get('color','#1f77b4'),0.6))
+            handles.append(h)
+        ax2.legend(handles, tps, bbox_to_anchor=(1.02,0.5), loc='center left', fontsize=8, title='TimePair', frameon=True)
+        fig2.subplots_adjust(right=0.72)
+
+
+    fig2.subplots_adjust(bottom=0.26)
+    fig2.text(0.5, 0.02,
+              "Interpretation: Higher values indicate better preservation of subject order",
+              ha='center', fontsize=max(8,mpl.rcParams.get("font.size",10)-INTERP_FS_DELTA),
+              color='blue', style='italic')
+
+    figs.append(("pairwise_spearman_timepairavg_combined", fig2))
+
+    return figs

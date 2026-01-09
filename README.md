@@ -1,4 +1,4 @@
-# DiagnoseHarmonize version 0.0.1
+# DiagnoseHarmonize version 0.2.1
 
 DiagnoseHarmonize is an **In-development** library for the streamline application and assesment of harmonization algorithms at the summary measure level, as well as the establishment of a centralised location for popular existing harmonization methods that are well validated within the literature.
 We plan to show in an upcoming paper that the systematic evaluation of different components of the batch effect and subsequent reporting is not only beneficial for choosing a good harmonisation strategy, but essential for evaluating how well it has worked.
@@ -36,9 +36,9 @@ We also plan to add a third function, UnknownBatchReport(), which would be appli
 
 ## LoggingTool.py
 
-    Enhanced logging and HTML report generation for diagnostic reports.
-    Provides the StatsReporter class that allows logging text and plots, organizing them into sections, and writing a structured HTM report with a table of contents.
-    If individuals would like to use this library to create their own analysis scripts, we suggest using the logging tool as an easy way to organise and return results (see script for more detail)
+Enhanced logging and HTML report generation for diagnostic reports.
+Provides the StatsReporter class that allows logging text and plots, organizing them into sections, and writing a structured HTM report with a table of contents.
+If individuals would like to use this library to create their own analysis scripts, we suggest using the logging tool as an easy way to organise and return results (see script for more detail)
 
     Functions:
     - log_section(section_id, title): mark a new named section in the log 
@@ -47,8 +47,8 @@ We also plan to add a third function, UnknownBatchReport(), which would be appli
 
 ## DiagnosticFunctions.py
 
-    Definitions for each of the functions called by the different reporting tools in DiagnosticReport.py are written here.
-    Each function will show either the additive, multiplicative or distribution difference between batches. Additionally, covariate effects using Linear models (either mixed effects or if this cannot be fit, fixed effects through OLS)
+Definitions for each of the functions called by the different reporting tools in DiagnosticReport.py are written here.
+Each function will show either the additive, multiplicative or distribution difference between batches. Additionally, covariate effects using Linear models (either mixed effects or if this cannot be fit, fixed effects through OLS)
     
     Collection of statistical functions to assess and visualise batch effects in tabular data.
     Functions:
@@ -61,30 +61,41 @@ We also plan to add a third function, UnknownBatchReport(), which would be appli
 
 ## PlotDiagnosticResults.py
 
-    Complementary plotting functions for the functions in DiagnosticFunctions.py
+Complementary plotting functions for the functions in DiagnosticFunctions.py
     Functions:
-    - Z_Score_Plot: Plot histogram and heatmap of Z-scored data by batch.
-    - Cohens_D_plot: Plot Cohen's d effect sizes with histograms.
-    - variance_ratio_plot: Plot variance ratios between batches.
-    - PC_corr_plot: Generate PCA diagnostic plots including scatter plots and correlation heatmaps.
-    - PC_clustering_plot: K-means clustering and silhouette analysis of PCA results by batch.
-    - Ks_Plot: Plot KS statistic between batches.
+        - Z_Score_Plot: Plot histogram and heatmap of Z-scored data by batch.
+        - Cohens_D_plot: Plot Cohen's d effect sizes with histograms.
+        - variance_ratio_plot: Plot variance ratios between batches.
+        - PC_corr_plot: Generate PCA diagnostic plots including scatter plots and correlation heatmaps.
+        - PC_clustering_plot: K-means clustering and silhouette analysis of PCA results by batch.
+        - Ks_Plot: Plot KS statistic between batches.
 
 ## HarmonizationFunctions.py
 
-    Collection of widely used functions for applying harmonisation to tabular data:
-        HarmonizationFunctions.combat(data, batch, mod, parametric,
-                    DeltaCorrection=True, UseEB=True, ReferenceBatch=None,
-                    RegressCovariates=False, GammaCorrection=True)          
-            Apply combat harmonisation to your data:
-            Mandatory: 
-                dat: should be M x N (features by observations) array
-                Batch: N length array or list 
-                mod: N x C array where C is your number of covariates
-                parametric: Whether to set parametric to true or false (should be set to True, setting parametric to false results in longer run time and is unstable, may be fixed n future implementation)             
-            Optional: 
-                DeltaCorrection: Whether to apply scaling correction (default true)
-                UseEB: Use empirical Bayes to estimate location scale correctio (default true)
-                ReferenceBatch: Set batch label in batch to be the reference, no L/S correction is applied to this batch and this batches mean and variance are used when estimating batch corrections
-                RegressCovariates: Should covariate effects estimated from mod be added back into data or data returned as residuals (default False)
-                GammaCorrection: Whether to apply mean shift correction (default true)
+Collection of widely used functions for applying harmonisation to tabular data:
+
+            HarmonizationFunctions.combat(data, batch, mod, parametric,
+                        DeltaCorrection=True, UseEB=True, ReferenceBatch=None,
+                        RegressCovariates=False, GammaCorrection=True)          
+                Apply combat harmonisation to your data:
+                Mandatory: 
+                    dat: should be M x N (features by observations) array
+                    Batch: N length array or list 
+                    mod: N x C array where C is your number of covariates
+                    parametric: Whether to set parametric to true or false (should be set to True, setting parametric to false results in longer run time and is unstable, may be fixed in     future implementations)             
+                Optional: 
+                    DeltaCorrection: Whether to apply scaling correction (default true)
+                    UseEB: Use empirical Bayes to estimate location scale correctio (default true)
+                    ReferenceBatch: Set batch label in batch to be the reference, no L/S correction is applied to this batch and this batches mean and variance are used when estimating        batch corrections
+                    RegressCovariates: Should covariate effects estimated from mod be added back into data or data returned as residuals (default False)
+                    GammaCorrection: Whether to apply mean shift correction (default true)
+
+## Simulator.py
+
+Batch effect simulator that opens an interactive web-browser and allows the user to generate simulated datasets with varying numbers of unique batches,
+severity of batch effects (additive and multiplicative) and different covariate effects. 
+
+The user can then visualise the feature-wise difference in batches using histograms and box-plots, generate a cross-sectional diagnostic report to view the effects in more detail and       apply harmonisation (using ComBat). This allows the user to get a direct comparisson of the before/after of applying harmonisation by comparing the reports in a semi-realistic scenario.
+
+To run the simulator, run **streamlit run simulator.py** in the terminal
+    
