@@ -1,4 +1,4 @@
-# DiagnoseHarmonize version 0.2.1
+# DiagnoseHarmonize version 0.9.1
 
 DiagnoseHarmonize is an **In-development** library for the streamline application and assesment of harmonization algorithms at the summary measure level, as well as the establishment of a centralised location for popular existing harmonization methods that are well validated within the literature.
 We plan to show in an upcoming paper that the systematic evaluation of different components of the batch effect and subsequent reporting is not only beneficial for choosing a good harmonisation strategy, but essential for evaluating how well it has worked.
