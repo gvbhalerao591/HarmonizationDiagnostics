@@ -3,7 +3,7 @@ requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "harmonization-diagnostics"
+name = "HarmonizationDiagnostics"
 version = "0.1.0"
 description = "Diagnostics for pre- and post- Harmonisation"
 readme = { file = "README.md", content-type = "text/markdown" }
@@ -56,9 +56,4 @@ classifiers = [
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["harmonization_diagnostics*"]
-
-[tool.pytest.ini_options]
-testpaths = ["tests"]
-addopts = "-q --cov=harmonization_diagnostics"
-
+include = ["HarmonizationDiagnostics*"]
