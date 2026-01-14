@@ -119,7 +119,8 @@ Each function will show either the additive, multiplicative or distribution diff
 ## PlotDiagnosticResults.py
 
 Complementary plotting functions for the functions in DiagnosticFunctions.py
-** Functions Include: **
+**Functions Include:**
+
     - Z_Score_Plot: Plot histogram and heatmap of Z-scored data by batch.
     - Cohens_D_plot: Plot Cohen's d effect sizes with histograms.
     - variance_ratio_plot: Plot variance ratios between batches.
