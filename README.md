@@ -115,6 +115,14 @@ Each function will show either the additive, multiplicative or distribution diff
     - fit_lmm_safe: Robustly fit a Linear Mixed Model with fallbacks and diagnostics.
     - Variance_Ratios: Calculate variance ratios between batches for each feature.
     - KS_Test: Performs two-sample Kolmogorov-Smirnov test between batches for each feature.
+    - Subject order consistency using Spearman correlation and permutation tests (for longitudinal)
+    - Within-subject variability between timepoints per subject [% diff for 2 timepoints OR coefficient of variation for more than 2 timepoints] (for longitudinal)
+    - Multivariate pairwise and averaged batch difference using Mahalanobis distance (for longitudinal)
+    - Overall and pairwise mean differences using mixed effects models (for longitudinal)
+    - Between-subject variability (ICC) using mixed effects models (for longitudinal)
+    - Biological variability using mixed effects models (for longitudinal)
+    - Additive batch effects (Does batch contribute to the overall variance in data) (for longitudinal)
+    - Multiplicative/scaling batch effects (variance comparison using Fligner test) (for longitudinal)
 
 ## PlotDiagnosticResults.py
 
